@@ -30,7 +30,7 @@
 ## Windows (MSVC)
 Just open the CMakeLists.txt in visual studio.
 
-## Linux (MSVC)
+## Linux
 Run the following at the root of the repository
 ```sh
 mkdir build
