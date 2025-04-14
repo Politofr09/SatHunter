@@ -10,9 +10,9 @@
 
 ℹ️ SatHunter is the continuation of [gl-tracker](https://github.com/Politofr09/gl-tracker), another tracking program I made in go.
 
-[Features](#features) - [Usage](#usage--controls) - [Compiling](#compiling-yourself)
+[Features](#features) - [Usage](#usage) - [Compiling](#compiling-yourself)
 
-# Features ⚡
+# Features
 - `3D` orbit visualisation
 - Configurable ground station and label
 - Configurable TLE url list
@@ -21,7 +21,7 @@
 - Geodetic map view
 - Multiple satellites at the same time
 
-# Usage & Controls 🔧
+# Usage
 - Press `F1` to swap between following the satellite to third person camera.
 
 - Click the satellite you want to select on the `Satelite list` window.
@@ -31,7 +31,7 @@
 ## Windows (MSVC)
 Just open the CMakeLists.txt in visual studio.
 
-## Linux (MSVC)
+## Linux
 Run the following at the root of the repository
 ```sh
 mkdir build
