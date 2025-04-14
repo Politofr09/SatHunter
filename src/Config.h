@@ -16,7 +16,7 @@ struct Config
 
 	struct _Tracker
 	{
-		std::string Satellite = "NOAA 15";
+		std::vector<std::string> Satellites;
 		libsgp4::Observer GroundStation = libsgp4::Observer(0, 0, 0);
 		std::string GroundStationLabel = "Ground station";
 	} Tracker;

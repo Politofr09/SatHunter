@@ -3,6 +3,7 @@
 
 #include <rlImGui.h>
 #include <extras/IconsFontAwesome6.h>
+#include <extras/FA6FreeSolidFontData.h>
 #include <raymath.h>
 #include <imgui.h>
 
@@ -37,10 +38,12 @@ void Application::Initialize()
 		.projection = CAMERA_PERSPECTIVE,
 	};
 
-	rlImGuiSetup(true);
+	rlImGuiBeginInitImGui();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_ViewportsEnable;
-	//io.FontDefault = io.Fonts->AddFontFromFileTTF("res/FiraSans-Regular.ttf", 18.0f);
+	io.FontDefault = io.Fonts->AddFontFromFileTTF("res/droid-sans/DroidSans.ttf", 16.0f);
+
+	rlImGuiEndInitImGui();
 
 	SetupImGuiStyle();
 
@@ -49,8 +52,14 @@ void Application::Initialize()
 	m_TLEs = LoadTLEs();
 
 	LoadResources();
+
+	for (const std::string& sat : m_Config.Tracker.Satellites)
+	{
+		// Create a satellite for every TLE that has 'sat' name
+		m_SatelliteList.push_back(new Satellite(m_TLEs[sat]));
+	}
 	
-	TrySetSatellite(m_Config.Tracker.Satellite);
+	TrySelectSatellite(m_SatelliteList[0]);
 }
 
 void Application::Tick()
@@ -135,6 +144,8 @@ void Application::LoadResources()
 	m_SatelliteModel = LoadModel("res/satellite.glb");
 	m_LocationBilboardMap = LoadTexture("res/location-bilboard-map.png");
 	m_WorldMapTexture2k = LoadTexture("res/2k_earth_daymap.jpg"); // There's also a night version maybe looks cooler
+
+	m_DroidSansFont = LoadFontEx("res/droid-sans/DroidSans.ttf", 32, NULL, 0);
 }
 
 void Application::ControlCamera()
@@ -260,17 +271,15 @@ void Application::SetupImGuiStyle()
 	style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.800000011920929f, 0.800000011920929f, 0.800000011920929f, 0.3499999940395355f);
 }
 
-bool Application::TrySetSatellite(const std::string& name)
+bool Application::TrySelectSatellite(Satellite* satellite)
 {
-	auto it = m_TLEs.find(name);
-	if (it == m_TLEs.end())
-		return false;
+	if (std::find(m_SatelliteList.begin(), m_SatelliteList.end(), satellite) == m_SatelliteList.end()) return false;
 
-	m_SelectedSatName = name;
-	m_SelectedTLE = it->second;
-	sgp4.SetTle(m_SelectedTLE);
-	m_OrbitPath = GetOrbitPath(sgp4);
-	SetWindowTitle(std::string("SatHunter: " + name).c_str());
+	m_SelectedSatellite = satellite;
+	// Also show it on the 3D explorer
+	m_FollowSatellite = true;
+
+	SetWindowTitle(std::string("SatHunter: " + m_SelectedSatellite->GetName()).c_str());
 	return true;
 }
 
@@ -284,7 +293,7 @@ void Application::Draw3DView()
 
 	DrawModelEx(m_EarthModel, { 0, 0, 0 }, { 0, 1, 0 }, 180.0f, { 0.01, 0.01, 0.01 }, WHITE);
 
-	Vector3 satPos = GetSatellitePosition(sgp4, m_SelectedTLE.Epoch().Now());
+	Vector3 satPos = m_SelectedSatellite->GetPosition3D();
 
 	if (IsKeyPressed(KEY_F1))
 	{
@@ -313,13 +322,24 @@ void Application::Draw3DView()
 		};
 	}
 
-	// Draw m_SelectedTLE
-	DrawModelEx(m_SatelliteModel, satPos, { 0, 0, 0 }, 0.0f, { 0.00015, 0.00015, 0.00015 }, WHITE);
 
 	// Draw orbit
-	for (int i = 0; i < 180 - 1; i++)
+	int orbitIndex = 0;
+	for (const auto& sat : m_SatelliteList)
 	{
-		DrawLine3D(m_OrbitPath.Points3D[i], m_OrbitPath.Points3D[i + 1], GREEN);
+		DrawModelEx(m_SatelliteModel, sat->GetPosition3D(), {0, 0, 0}, 0.0f, {0.00015, 0.00015, 0.00015}, WHITE);
+
+		Color orbitColor = OrbitColors[orbitIndex % 10];
+		if (sat != m_SelectedSatellite)
+		{
+			orbitColor.a = 130;
+		}
+
+		for (int i = 0; i < 180 - 1; i++)
+		{
+			DrawLine3D(sat->GetOrbit().Points3D[i], sat->GetOrbit().Points3D[i + 1], orbitColor);
+		}
+		orbitIndex++;
 	}
 
 	// Draw ground station
@@ -334,13 +354,22 @@ void Application::Draw3DView()
 	DrawBillboard(m_Camera, m_LocationBilboardMap, groundStationPos, 0.5f, GREEN);
 
 	EndMode3D();
-
-	Vector2 satLabelPos = GetWorldToScreenEx(satPos, m_Camera, m_3DRenderTarget.texture.width, m_3DRenderTarget.texture.height);
-	DrawText(m_SelectedSatName.c_str(), satLabelPos.x - MeasureText(m_SelectedSatName.c_str(), 20) / 2.0f, satLabelPos.y, 20, GREEN);
+	for (const auto& sat : m_SatelliteList)
+	{
+		Vector2 satLabelPos = GetWorldToScreenEx(sat->GetPosition3D(), m_Camera, m_3DRenderTarget.texture.width, m_3DRenderTarget.texture.height);
+		
+		if (sat == m_SelectedSatellite)
+		{
+			DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satLabelPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 32, 1.0).x / 2.0f, satLabelPos.y }, 32, 1.0, GREEN);
+		}
+		else
+		{
+			DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satLabelPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 16, 1.0).x / 2.0f, satLabelPos.y }, 16, 1.0, WHITE);
+		}
+	}
 
 	Vector2 groundLabelPos = GetWorldToScreenEx(groundStationPos, m_Camera, m_3DRenderTarget.texture.width, m_3DRenderTarget.texture.height);
-	DrawText(m_Config.Tracker.GroundStationLabel.c_str(), groundLabelPos.x - MeasureText(m_Config.Tracker.GroundStationLabel.c_str(), 20) / 2.0f, groundLabelPos.y, 20, GREEN);
-
+	DrawTextEx(m_DroidSansFont, m_Config.Tracker.GroundStationLabel.c_str(), { groundLabelPos.x - MeasureTextEx(m_DroidSansFont, m_Config.Tracker.GroundStationLabel.c_str(), 32, 1.0).x / 2.0f, groundLabelPos.y }, 32, 1.0, GREEN);
 
 	EndTextureMode();
 }
@@ -397,25 +426,63 @@ void Application::DrawMap()
 		WHITE
 	);
 
-	for (int i = 0; i < 180 - 1; i++)
+	int orbitIndex = 0;
+	for (const auto& sat : m_SatelliteList)
 	{
-		Vector2 p1 = LatLonToRaylib(m_OrbitPath.PointsGeodetic[i], m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
-		Vector2 p2 = LatLonToRaylib(m_OrbitPath.PointsGeodetic[i + 1], m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
-
-		if (Vector2Distance(p1, p2) > 180.0f)
+		float orbitLength = 2.0f;
+		Color orbitColor = OrbitColors[orbitIndex % 10];
+		
+		if (sat == m_SelectedSatellite)
 		{
-			DrawCircleV(p1, 2.0f, GREEN);
-			continue;
+			orbitLength = 3.0f;
+		}
+		else
+		{
+			orbitColor.a = 180;
 		}
 
-		DrawLineEx(p1, p2, 2.0f, GREEN);
+
+		for (int i = 0; i < 180 - 1; i++)
+		{
+			Vector2 p1 = LatLonToRaylib(sat->GetOrbit().PointsGeodetic[i], m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
+			Vector2 p2 = LatLonToRaylib(sat->GetOrbit().PointsGeodetic[i + 1], m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
+
+			if (Vector2Distance(p1, p2) > 180.0f)
+			{
+				DrawCircleV(p1, orbitLength, orbitColor);
+				continue;
+			}
+
+			DrawLineEx(p1, p2, orbitLength, orbitColor);
+		}
+		orbitIndex++;
 	}
 
-	// Draw the satellite
-	Vector2 satPos = LatLonToRaylib(sgp4.FindPosition(m_SelectedTLE.Epoch().Now()).ToGeodetic(), m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
-	DrawCircleV(satPos, 12.0f, ORANGE);
+	// Draw the satellites on top of the orbits; that's why we loop 2 times
+	orbitIndex = 0;
+	for (const auto& sat : m_SatelliteList)
+	{
+		Vector2 satPos = LatLonToRaylib(sat->GetGeodetic(), m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
+		DrawCircleV(satPos, 12.0f, OrbitColors[orbitIndex % 10]);
+			
+		Vector2 localMouse = Vector2Subtract(GetMousePosition(), m_MapWindowPosition);
 
-	DrawText(m_SelectedSatName.c_str(), satPos.x - MeasureText(m_SelectedSatName.c_str(), 12) / 2.0f, satPos.y - 5, 12, BLACK);
+		if (CheckCollisionPointCircle(localMouse, satPos, 12.0f) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+		{
+			m_SelectedSatellite = sat;
+		}
+
+		if (sat == m_SelectedSatellite)
+		{
+			DrawCircleLinesV(satPos, 12.0f, BLACK);
+			DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 32, 1.0).x / 2.0f, satPos.y - 5 }, 32, 1.0, WHITE);
+		}
+		else
+		{
+			DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 16, 1.0).x / 2.0f, satPos.y - 5 }, 16, 1.0, BLACK);
+		}
+		orbitIndex++;
+	}
 
 	// Draw the ground station
 	Vector2 groundStationPos = LatLonToRaylib(m_Config.Tracker.GroundStation.GetLocation(), m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
@@ -434,6 +501,11 @@ void Application::DrawMapViewport()
 			m_MapRenderTarget = LoadRenderTexture(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
 		}
 
+		m_MapWindowPosition = {
+			ImGui::GetWindowPos().x + 8, // Adjust offset
+			ImGui::GetWindowPos().y + 27
+		};
+
 		rlImGuiImageRenderTexture(&m_MapRenderTarget);
 	}
 	ImGui::End();
@@ -443,17 +515,71 @@ void Application::DrawSatelliteList()
 {
 	ImGui::Begin("Satellite list", &m_DrawSatelliteList);
 	{
+		ImGui::BeginChild("All satellites", ImVec2(ImGui::GetContentRegionAvail().x/2, ImGui::GetContentRegionAvail().y));
+
 		for (const auto& entry : m_TLEs)
 		{
 			const std::string& name = entry.first;
 			const auto& tle = entry.second;
 
-			if (ImGui::Selectable(name.c_str(), m_SelectedTLE.Name() == name))
+			if (ImGui::Selectable(name.c_str(), m_SelectedSatellite->GetName() == name))
 			{
-				TrySetSatellite(name);
+				// Check if it's already on the satellite list
+				bool alreadyInTheList = false;
+				for (auto& sat : m_SatelliteList)
+				{
+					if (sat->GetName() == name)
+					{
+						alreadyInTheList = true;
+						TrySelectSatellite(sat);
+						break;
+					}
+				}
+
+				// If it's not in the list create a satellite for it 
+				if (!alreadyInTheList)
+				{
+					Satellite* actualSatellite = new Satellite(entry.second);
+					m_SatelliteList.push_back(actualSatellite);
+					TrySelectSatellite(actualSatellite);
+				}
 			}
 		}
+
+		ImGui::EndChild();
+		ImGui::SameLine();
+		ImGui::BeginChild("Selection");
+
+		for (int i = 0; i < m_SatelliteList.size();)
+		{
+			auto& sat = m_SatelliteList[i];
+			ImGui::PushID(i);
+
+			bool selected = m_SelectedSatellite == sat;
+
+			if (ImGui::SmallButton(ICON_FA_ARROW_LEFT) && m_SatelliteList.size() > 1)
+			{
+				delete sat;
+				m_SatelliteList.erase(i + m_SatelliteList.begin());
+				if (selected) m_SelectedSatellite = m_SatelliteList[0];
+				ImGui::PopID();
+				continue; // skip selectable, don't increment i
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Selectable(sat->GetName().c_str(), selected))
+			{
+				TrySelectSatellite(sat);
+			}
+
+			ImGui::PopID();
+			++i;
+		}
+
+		ImGui::EndChild();
 	}
+
 	ImGui::End();
 }
 

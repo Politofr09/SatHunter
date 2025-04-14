@@ -4,6 +4,12 @@
 
 namespace SatHunter {
 
+inline static std::string Trim(const std::string& str) {
+	const auto start = str.find_first_not_of(" \t\n\r");
+	const auto end = str.find_last_not_of(" \t\n\r");
+	return (start == std::string::npos) ? "" : str.substr(start, end - start + 1);
+}
+
 Config LoadConfigFile()
 {
 	ini::IniFile configFile;
@@ -14,7 +20,14 @@ Config LoadConfigFile()
 
 	conf.General.TleUrl = configFile["General"]["tle_url"].as<const char*>();
 
-	conf.Tracker.Satellite = configFile["Tracker"]["satellite"].as<const char*>();
+	std::string satList = configFile["Tracker"]["satellites"].as<const char*>();
+
+	std::stringstream ss(satList);
+	std::string buffer;
+
+	while (std::getline(ss, buffer, ',')) {
+		conf.Tracker.Satellites.push_back(Trim(buffer));
+	}
 
 	std::string groundStationStr = configFile["Tracker"]["ground_station"].as<const char*>();
 

@@ -1,7 +1,41 @@
 #include "Satellite.h"
 #include <raymath.h>
 
+const libsgp4::Tle DefaultTLE(
+	"UK-DMC 2",
+	"1 35683U 09041C   12289.23158813  .00000484  00000-0  89219-4 0  5863",
+	"2 35683  98.0221 185.3682 0001499 100.5295 259.6088 14.69819587172294");
+
 namespace SatHunter {
+
+Satellite::Satellite()
+	: m_TLE(DefaultTLE), m_SGP4Instance(DefaultTLE)
+{
+	// Don't compute here the orbits, because it will cause confusions with the default tle 'Where did UK-DMC 2 come from?'
+	// DefaultTle exists because libsgp4 *needs to* be initialized. That's the workaround I found
+}	
+
+Satellite::Satellite(libsgp4::Tle tle)
+	: m_TLE(tle), m_SGP4Instance(tle)
+{
+	m_OrbitPath = GetOrbitPath(m_SGP4Instance);
+	m_Name = m_TLE.Name();
+
+	// Remove spaces
+	m_Name.erase(std::find_if(m_Name.rbegin(), m_Name.rend(), [](unsigned char ch) {
+		return !std::isspace(ch);  // Find the first non-space character from the end
+		}).base(), m_Name.end());
+}
+
+Vector3 Satellite::GetPosition3D() const
+{
+	return GetSatellitePosition(m_SGP4Instance, m_TLE.Epoch().Now());
+}
+
+libsgp4::CoordGeodetic Satellite::GetGeodetic() const
+{
+	return m_SGP4Instance.FindPosition(m_TLE.Epoch().Now()).ToGeodetic();
+}
 
 Vector3 GetSatellitePosition(libsgp4::SGP4 sgp4, libsgp4::DateTime dt)
 {
@@ -77,5 +111,6 @@ Vector2 LatLonToRaylib(const libsgp4::CoordGeodetic& geo, float mapWidth, float 
 		dest.y + yNorm * dest.height
 	};
 }
+
 
 }

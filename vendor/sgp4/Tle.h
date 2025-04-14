@@ -32,6 +32,13 @@ namespace libsgp4
 class Tle
 {
 public:
+    // Added by politofr09 13/04/2025
+    // Dear author of this library
+    // I really need this default constructor
+    // So just let me...
+    Tle() {}
+    // There we go! Wasn't it that bad!
+
     /**
      * @details Initialise given the two lines of a tle
      * @param[in] line_one Tle line one

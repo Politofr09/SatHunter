@@ -19,6 +19,7 @@
 - ImGui user interface
 - TLE fetching and caching
 - Geodetic map view
+- Multiple satellites at the same time
 
 # Usage & Controls 🔧
 - Press `F1` to swap between following the satellite to third person camera.

@@ -7,12 +7,47 @@
 
 #define SATELLITE_ORBIT_SCALE 1000
 
+
 namespace SatHunter {
 
 struct OrbitPath
 {
 	std::vector<Vector3> Points3D;
 	std::vector<libsgp4::CoordGeodetic> PointsGeodetic;
+};
+
+class Satellite
+{
+public:
+	Satellite();
+	Satellite(libsgp4::Tle tle);
+
+	Satellite& operator=(const Satellite& other)
+	{
+		m_Name = other.m_Name;
+		m_OrbitPath.Points3D = m_OrbitPath.Points3D;
+		m_OrbitPath.PointsGeodetic = m_OrbitPath.PointsGeodetic;
+		m_TLE = other.m_TLE;
+		m_SGP4Instance.SetTle(m_TLE);
+		return *this;
+	}
+
+	bool operator==(const Satellite& rhs)
+	{
+		return m_Name == rhs.m_Name;
+	}
+
+	const std::string& GetName() const { return m_Name; }
+	const OrbitPath& GetOrbit() const { return m_OrbitPath; }
+
+	Vector3 GetPosition3D() const;
+	libsgp4::CoordGeodetic GetGeodetic() const;
+
+private:
+	libsgp4::SGP4 m_SGP4Instance;
+	libsgp4::Tle  m_TLE;
+	std::string   m_Name;
+	OrbitPath	  m_OrbitPath;
 };
 
 Vector3 GetSatellitePosition(libsgp4::SGP4 sgp4, libsgp4::DateTime dt);

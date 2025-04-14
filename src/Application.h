@@ -10,23 +10,18 @@
 #include <SGP4.h>
 
 #include <unordered_map>
+#include <array>
 
-const libsgp4::Tle DefaultTLE(
-	"UK-DMC 2",
-	"1 35683U 09041C   12289.23158813  .00000484  00000-0  89219-4 0  5863",
-	"2 35683  98.0221 185.3682 0001499 100.5295 259.6088 14.69819587172294");
+constexpr std::array<Color, 10> OrbitColors = {
+	GREEN, BLUE, RED, PINK, WHITE, YELLOW, ORANGE, MAROON, MAGENTA, DARKGRAY
+};
 
 namespace SatHunter {
 
 class Application
 {
 public:
-	Application()
-		: m_SelectedTLE(DefaultTLE),
-		sgp4(DefaultTLE)
-	{
-	}
-
+	Application() = default;
 	void Run();
 
 private:
@@ -39,7 +34,8 @@ private:
 	void ControlCamera();
 	void SetupImGuiStyle();
 
-	bool TrySetSatellite(const std::string& name);
+	// Select a satellite *from	 m_SatelliteList*
+	bool TrySelectSatellite(Satellite* satellite);
 
 
 private:
@@ -52,6 +48,7 @@ private:
 	bool m_DrawWorldMap = true;
 	void DrawMap();			// Raylib logic -> Lat/Long world map
 	void DrawMapViewport(); // ImGui -> Display the render target 
+	Vector2 m_MapWindowPosition;
 
 	bool m_DrawSatelliteList = true;
 	void DrawSatelliteList();
@@ -66,13 +63,12 @@ private:
 	Model m_SatelliteModel;
 	Texture m_LocationBilboardMap;
 	Texture m_WorldMapTexture2k;
+	Font m_DroidSansFont;
 
-	libsgp4::SGP4 sgp4;
 	std::unordered_map<std::string, libsgp4::Tle> m_TLEs;
-	std::string m_SelectedSatName;
-	libsgp4::Tle m_SelectedTLE;
 
-	OrbitPath m_OrbitPath;
+	Satellite* m_SelectedSatellite = nullptr;
+	std::vector<Satellite*> m_SatelliteList;
 
 	bool m_FollowSatellite = false;
 	bool m_CanControlCamera = false;
