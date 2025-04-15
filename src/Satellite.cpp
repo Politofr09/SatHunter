@@ -18,13 +18,18 @@ Satellite::Satellite()
 Satellite::Satellite(libsgp4::Tle tle)
 	: m_TLE(tle), m_SGP4Instance(tle)
 {
-	m_OrbitPath = GetOrbitPath(m_SGP4Instance);
+	RecalculateOrbit();
 	m_Name = m_TLE.Name();
 
 	// Remove spaces
 	m_Name.erase(std::find_if(m_Name.rbegin(), m_Name.rend(), [](unsigned char ch) {
 		return !std::isspace(ch);  // Find the first non-space character from the end
 		}).base(), m_Name.end());
+}
+
+void Satellite::RecalculateOrbit()
+{
+	m_OrbitPath = GetOrbitPath(m_SGP4Instance);
 }
 
 Vector3 Satellite::GetPosition3D() const
@@ -35,6 +40,16 @@ Vector3 Satellite::GetPosition3D() const
 libsgp4::CoordGeodetic Satellite::GetGeodetic() const
 {
 	return m_SGP4Instance.FindPosition(m_TLE.Epoch().Now()).ToGeodetic();
+}
+
+libsgp4::Eci Satellite::GetEci() const
+{
+	return GetEciTimed(m_TLE.Epoch().Now());
+}
+
+libsgp4::Eci Satellite::GetEciTimed(const libsgp4::DateTime dt) const
+{
+	return m_SGP4Instance.FindPosition(dt);
 }
 
 Vector3 GetSatellitePosition(libsgp4::SGP4 sgp4, libsgp4::DateTime dt)

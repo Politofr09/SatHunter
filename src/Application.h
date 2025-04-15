@@ -53,6 +53,12 @@ private:
 	bool m_DrawSatelliteList = true;
 	void DrawSatelliteList();
 
+	bool m_DrawPolarView = true;
+	void DrawPolarView();
+
+	bool m_DrawSkyGlance = true;
+	void DrawSkyGlance();
+
 private:
 	Config m_Config;
 
@@ -66,12 +72,23 @@ private:
 	Font m_DroidSansFont;
 
 	std::unordered_map<std::string, libsgp4::Tle> m_TLEs;
+	libsgp4::DateTime m_StartTime;
 
 	Satellite* m_SelectedSatellite = nullptr;
 	std::vector<Satellite*> m_SatelliteList;
 
 	bool m_FollowSatellite = false;
 	bool m_CanControlCamera = false;
+
+private:
+	// Pass prediction
+	using PassData = std::unordered_map<std::string, std::vector<PassDetails>>;
+
+	PassData m_PassData;
+	std::vector<PassDetails> PredictPass(Satellite* sat, const libsgp4::DateTime& start, const libsgp4::DateTime& end, float minElevation = 10.0f);
+	PassData PredictAllPasses(const libsgp4::DateTime& start, const libsgp4::DateTime& end, float minElevation = 10.0f);
+
+
 };
 
 }

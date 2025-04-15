@@ -51,6 +51,8 @@ void Application::Initialize()
 	CheckTLEs(m_Config.General.TleUrl);
 	m_TLEs = LoadTLEs();
 
+	m_StartTime = libsgp4::DateTime::Now();
+
 	LoadResources();
 
 	for (const std::string& sat : m_Config.Tracker.Satellites)
@@ -60,12 +62,30 @@ void Application::Initialize()
 	}
 	
 	TrySelectSatellite(m_SatelliteList[0]);
+
+	m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
 }
 
 void Application::Tick()
 {
 	if (m_Draw3DGlobe) Draw3DView();
 	if (m_DrawWorldMap) DrawMap();
+
+	// Update the orbits and the passes every 2 minutes
+	libsgp4::DateTime now = libsgp4::DateTime::Now();
+	libsgp4::TimeSpan elapsed = now - m_StartTime;
+
+	if (elapsed.TotalMinutes() >= 2.0)
+	{
+		m_StartTime = now;
+
+		m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
+		
+		for (auto& sat : m_SatelliteList)
+		{
+			sat->RecalculateOrbit();
+		}
+	}
 
 	BeginDrawing();
 
@@ -112,7 +132,9 @@ void Application::Tick()
 				{
 					ImGui::Checkbox(ICON_FA_SATELLITE " Satellite list", &m_DrawSatelliteList);
 					ImGui::Checkbox(ICON_FA_EARTH_EUROPE " 3D globe", &m_Draw3DGlobe);
-					ImGui::Checkbox(ICON_FA_MAP " 2D map" , &m_DrawWorldMap);
+					ImGui::Checkbox(ICON_FA_MAP " 2D map", &m_DrawWorldMap);
+					ImGui::Checkbox(ICON_FA_CIRCLE " Polar view", &m_DrawPolarView);
+					ImGui::Checkbox(ICON_FA_GLOBE " Sky at a glance" , &m_DrawSkyGlance);
 
 					ImGui::EndMenu();
 				}
@@ -125,6 +147,8 @@ void Application::Tick()
 		if (m_DrawSatelliteList) DrawSatelliteList();
 		if (m_Draw3DGlobe)       Draw3DViewport();
 		if (m_DrawWorldMap)		 DrawMapViewport();
+		if (m_DrawPolarView)	 DrawPolarView();
+		if (m_DrawSkyGlance)	 DrawSkyGlance();
 
 		rlImGuiEnd();
 
@@ -145,7 +169,7 @@ void Application::LoadResources()
 	m_LocationBilboardMap = LoadTexture("res/location-bilboard-map.png");
 	m_WorldMapTexture2k = LoadTexture("res/2k_earth_daymap.jpg"); // There's also a night version maybe looks cooler
 
-	m_DroidSansFont = LoadFontEx("res/droid-sans/DroidSans.ttf", 32, NULL, 0);
+	m_DroidSansFont = LoadFontEx("res/droid-sans/DroidSans-Bold.ttf", 32, NULL, 0);
 }
 
 void Application::ControlCamera()
@@ -463,6 +487,12 @@ void Application::DrawMap()
 	for (const auto& sat : m_SatelliteList)
 	{
 		Vector2 satPos = LatLonToRaylib(sat->GetGeodetic(), m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
+
+		if (sat == m_SelectedSatellite)
+		{
+			DrawCircleV(satPos, 14.0f, BLACK);
+		}
+
 		DrawCircleV(satPos, 12.0f, OrbitColors[orbitIndex % 10]);
 			
 		Vector2 localMouse = Vector2Subtract(GetMousePosition(), m_MapWindowPosition);
@@ -470,17 +500,10 @@ void Application::DrawMap()
 		if (CheckCollisionPointCircle(localMouse, satPos, 12.0f) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
 		{
 			m_SelectedSatellite = sat;
+			SetWindowTitle(std::string("SatHunter: " + m_SelectedSatellite->GetName()).c_str());
 		}
 
-		if (sat == m_SelectedSatellite)
-		{
-			DrawCircleLinesV(satPos, 12.0f, BLACK);
-			DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 32, 1.0).x / 2.0f, satPos.y - 5 }, 32, 1.0, WHITE);
-		}
-		else
-		{
-			DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 16, 1.0).x / 2.0f, satPos.y - 5 }, 16, 1.0, BLACK);
-		}
+		DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 16, 1.0).x / 2.0f, satPos.y - 5 }, 16, 1.0, BLACK);
 		orbitIndex++;
 	}
 
@@ -541,6 +564,8 @@ void Application::DrawSatelliteList()
 				{
 					Satellite* actualSatellite = new Satellite(entry.second);
 					m_SatelliteList.push_back(actualSatellite);
+					// Recompute the pass list
+					m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
 					TrySelectSatellite(actualSatellite);
 				}
 			}
@@ -563,6 +588,8 @@ void Application::DrawSatelliteList()
 				m_SatelliteList.erase(i + m_SatelliteList.begin());
 				if (selected) m_SelectedSatellite = m_SatelliteList[0];
 				ImGui::PopID();
+				// Recompute the pass list
+				m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
 				continue; // skip selectable, don't increment i
 			}
 
@@ -581,6 +608,226 @@ void Application::DrawSatelliteList()
 	}
 
 	ImGui::End();
+}
+
+void Application::DrawPolarView()
+{
+	ImGui::Begin("Polar view", &m_DrawPolarView);
+	{
+		ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+		ImVec2 canvas_pos = ImGui::GetCursorScreenPos();   // Top-left of drawing area
+		ImVec2 canvas_size = ImGui::GetContentRegionAvail(); // Size of drawing area
+		float radius = std::min(canvas_size.x, canvas_size.y) * 0.5f;
+
+		ImVec2 center = ImVec2(canvas_pos.x + canvas_size.x * 0.5f,
+			canvas_pos.y + canvas_size.y * 0.5f);
+
+		for (int i = 1; i <= 3; ++i)
+		{
+			float r = radius * (i / 3.0f);
+			draw_list->AddCircle(center, r, IM_COL32(100, 100, 100, 100), 64, 1.0f);
+		}
+
+		draw_list->AddLine(ImVec2(center.x - radius, center.y), ImVec2(center.x + radius, center.y),
+			IM_COL32(150, 150, 150, 100));
+		draw_list->AddLine(ImVec2(center.x, center.y - radius), ImVec2(center.x, center.y + radius),
+			IM_COL32(150, 150, 150, 100));
+
+		draw_list->AddText(ImVec2(center.x, center.y - radius), IM_COL32_WHITE, "N");
+		draw_list->AddText(ImVec2(center.x + radius - 10, center.y), IM_COL32_WHITE, "E");
+		draw_list->AddText(ImVec2(center.x, center.y + radius - 15), IM_COL32_WHITE, "S");
+		draw_list->AddText(ImVec2(center.x - radius, center.y), IM_COL32_WHITE, "W");
+
+		if (ImGui::IsWindowHovered())
+		{
+			ImVec2 mouse = ImGui::GetMousePos();
+			ImVec2 diff = ImVec2(mouse.x - center.x, mouse.y - center.y);
+			float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+
+			float norm = std::min(dist / radius, 1.0f);
+
+			float elevation = (1.0f - norm) * 90.0f;
+
+			float azimuth_rad = std::atan2(diff.x, -diff.y);
+			float azimuth_deg = azimuth_rad * (180.0f / PI);
+			if (azimuth_deg < 0) azimuth_deg += 360.0f;
+
+			ImGui::SetTooltip("Azimuth: %.3f, Elevation: %.3f", azimuth_deg, elevation);
+		}
+
+		libsgp4::CoordTopocentric topo = m_Config.Tracker.GroundStation.GetLookAngle(m_SelectedSatellite->GetEci());
+
+
+
+		float azimuth_rad = topo.azimuth;  // Azimuth in radians
+		float elevation_deg = topo.elevation * RAD2DEG; // Elevation in degrees
+
+		float norm = 1 - elevation_deg / 90.0f;
+
+		float x = center.x + radius * sinf(azimuth_rad) * norm;
+		float y = center.y - radius * cosf(azimuth_rad) * norm;
+
+		draw_list->AddCircleFilled(ImVec2(x, y), 5.0f, IM_COL32(255, 0, 0, 255)); // Red point, size 5
+	}
+	ImGui::End();
+}
+
+float DateTimeToSeconds(const libsgp4::DateTime& dt)
+{
+	int year = dt.Year();
+	int month = dt.Month();
+	int day = dt.Day();
+	int hour = dt.Hour();
+	int minute = dt.Minute();
+	int second = dt.Second();
+
+	struct tm tm = {};
+	tm.tm_year = year - 1900; // tm_year is years since 1900
+	tm.tm_mon = month - 1;    // tm_mon is months since January (0-11)
+	tm.tm_mday = day;
+	tm.tm_hour = hour;
+	tm.tm_min = minute;
+	tm.tm_sec = second;
+
+	time_t raw_time = mktime(&tm);
+	return static_cast<float>(raw_time);
+}
+
+void Application::DrawSkyGlance()
+{
+	libsgp4::TimeSpan span(24, 0, 0);
+
+	float rowHeight = 20.0f;
+	float rowSpacing = 5.0f;
+	float textOffset = 5.0f;
+
+	ImGui::Begin("Sky at a glance", &m_DrawSkyGlance);
+	{
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+		canvasPos.x += 100;
+		ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+		canvasSize.x -= 100;
+		ImVec2 canvasEnd = ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y);
+
+		// Draw border
+		drawList->AddRect(canvasPos, canvasEnd, IM_COL32(255, 255, 255, 120));
+
+		int row = 0;
+
+		for (auto& [satName, passes] : m_PassData)
+		{
+			float y = canvasPos.y + row * (rowHeight + rowSpacing);
+
+			drawList->AddText(ImVec2(canvasPos.x - 95, y + textOffset), IM_COL32_WHITE, satName.c_str());
+
+			for (auto& pass : passes)
+			{
+				libsgp4::TimeSpan AOS(pass.AOS.Ticks() - m_StartTime.Ticks());
+				libsgp4::TimeSpan LOS(pass.LOS.Ticks() - m_StartTime.Ticks());
+				double AOSTimeSeconds = AOS.TotalSeconds();
+				double LOSTimeSeconds = LOS.TotalSeconds();
+
+				double totalSpanSeconds = span.TotalSeconds();
+
+				float x0 = canvasPos.x + (float)(AOSTimeSeconds / totalSpanSeconds) * canvasSize.x;
+				float x1 = canvasPos.x + (float)(LOSTimeSeconds / totalSpanSeconds) * canvasSize.x;
+
+				drawList->AddRectFilled(
+					ImVec2(x0, y),
+					ImVec2(x1, y + rowHeight),
+					IM_COL32(100, 200, 255, 200) // light blue-ish bar
+				);
+			}
+
+			row++;
+		}
+
+		if (ImGui::IsWindowHovered())
+		{
+			ImVec2 mousePos = ImGui::GetMousePos();
+			if (mousePos.x >= canvasPos.x && mousePos.x <= canvasEnd.x)
+			{
+				// Calculate the time corresponding to the x-coordinate
+				float mouseXRelative = mousePos.x - canvasPos.x;  // Mouse position relative to canvas
+				double timeAtX = (mouseXRelative / canvasSize.x) * span.TotalSeconds(); // Map x to time in seconds
+
+				// Convert seconds to a time format (e.g., hours and minutes)
+				int hours = static_cast<int>(timeAtX) / 3600;
+				int minutes = (static_cast<int>(timeAtX) % 3600) / 60;
+				int seconds = static_cast<int>(timeAtX) % 60;
+
+				// Format time string
+				char timeStr[64];
+				snprintf(timeStr, sizeof(timeStr), "Time: +%02d:%02d:%02d", hours, minutes, seconds);
+
+				// Show tooltip with the time
+				ImGui::SetTooltip(timeStr);
+			}
+		}
+	}
+	ImGui::End();
+}
+
+std::vector<PassDetails> Application::PredictPass(Satellite* sat, const libsgp4::DateTime& start, const libsgp4::DateTime& end, float minElevation)
+{
+	std::vector<PassDetails> passes;
+	PassDetails currentPass;
+	bool inPass = false;
+
+	libsgp4::DateTime currentTime = start;
+
+	while (currentTime <= end)
+	{
+		libsgp4::CoordTopocentric topo = m_Config.Tracker.GroundStation.GetLookAngle(sat->GetEciTimed(currentTime));
+		float elevationDeg = topo.elevation * RAD2DEG;
+
+		if (elevationDeg >= minElevation)
+		{
+			if (!inPass)
+			{
+				// Just entered a pass
+				inPass = true;
+				currentPass.AOS = currentTime;
+				currentPass.MaxElevation = elevationDeg; // Set it for now to the elevation
+			}
+			else
+			{
+				// We are already in the middle of a pass
+				if (elevationDeg > currentPass.MaxElevation) currentPass.MaxElevation = elevationDeg;
+			}
+		}
+		else if (inPass)
+		{
+			// Just exited this pass
+			inPass = false;
+			currentPass.LOS = currentTime;
+			passes.push_back(currentPass);
+
+			// Reset for the next pass
+			currentPass = PassDetails();
+		}
+
+		currentTime = currentTime + libsgp4::TimeSpan(0, 0, 10);
+	}
+
+	return passes;
+}
+
+Application::PassData Application::PredictAllPasses(const libsgp4::DateTime& start, const libsgp4::DateTime& end, float minElevation)
+{
+	PassData passData;
+
+	for (auto& sat : m_SatelliteList)
+	{
+		auto passes = PredictPass(sat, start, end, minElevation);
+
+		if (!passes.empty())
+			passData[sat->GetName()] = std::move(passes);
+	}
+
+	return passData;
 }
 
 }

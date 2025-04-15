@@ -10,6 +10,13 @@
 
 namespace SatHunter {
 
+struct PassDetails
+{
+	libsgp4::DateTime AOS; // Acquisition Of Signal
+	libsgp4::DateTime LOS; // Lost Of Signal
+	float MaxElevation;
+};
+
 struct OrbitPath
 {
 	std::vector<Vector3> Points3D;
@@ -25,8 +32,8 @@ public:
 	Satellite& operator=(const Satellite& other)
 	{
 		m_Name = other.m_Name;
-		m_OrbitPath.Points3D = m_OrbitPath.Points3D;
-		m_OrbitPath.PointsGeodetic = m_OrbitPath.PointsGeodetic;
+		m_OrbitPath.Points3D = other.m_OrbitPath.Points3D;
+		m_OrbitPath.PointsGeodetic = other.m_OrbitPath.PointsGeodetic;
 		m_TLE = other.m_TLE;
 		m_SGP4Instance.SetTle(m_TLE);
 		return *this;
@@ -40,8 +47,13 @@ public:
 	const std::string& GetName() const { return m_Name; }
 	const OrbitPath& GetOrbit() const { return m_OrbitPath; }
 
+	// Refresh the orbit every 10 mins or so by calling this
+	void RecalculateOrbit();
+
 	Vector3 GetPosition3D() const;
 	libsgp4::CoordGeodetic GetGeodetic() const;
+	libsgp4::Eci GetEci() const;
+	libsgp4::Eci GetEciTimed(const libsgp4::DateTime dt) const;
 
 private:
 	libsgp4::SGP4 m_SGP4Instance;
