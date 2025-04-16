@@ -114,5 +114,57 @@ std::unordered_map<std::string, libsgp4::Tle> LoadTLEs()
 	return tles;
 }
 
+#ifdef EMSCRIPTEN
+#include <emscripten/fetch.h>
+std::unordered_map<std::string, libsgp4::Tle> tleMap;
+
+void downloadSucceeded(emscripten_fetch_t* fetch) 
+{
+	std::istringstream ss(std::string(fetch->data, fetch->numBytes));
+	std::string line1, line2, name;
+
+	while (std::getline(ss, name) && std::getline(ss, line1) && std::getline(ss, line2))
+	{
+		try 
+		{
+			line1.pop_back();
+			line2.pop_back();
+			tleMap.emplace(name, libsgp4::Tle(name, line1, line2));
+		}
+		catch (...) 
+		{
+			// Handle malformed TLEs gracefully
+		}
+	}
+
+	emscripten_fetch_close(fetch);
+}
+
+void downloadFailed(emscripten_fetch_t* fetch) 
+{
+	printf("Failed to fetch TLEs from %s\n", fetch->url);
+	emscripten_fetch_close(fetch);
+}
+
+std::unordered_map<std::string, libsgp4::Tle>& GetTLEForWeb(const& std::string url)
+{
+	static bool initialized = false;
+	if (!initialized)
+	{
+		initialized = true;
+
+		emscripten_fetch_attr_t attr;
+		emscripten_fetch_attr_init(&attr);
+		strcpy(attr.requestMethod, "GET");
+		attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+		attr.onsuccess = downloadSucceeded;
+		attr.onerror = downloadFailed;
+
+		emscripten_fetch(&attr, url.c_str());
+	}
+
+	return tleMap;
+}
+#endif
 
 }

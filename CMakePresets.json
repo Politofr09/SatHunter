@@ -41,6 +41,24 @@
         "USE_IMGUI": "ON",
         "BUILD_EXAMPLES": "OFF"
       }
+    },
+    {
+      "name": "Web",
+      "displayName": "Web build using emscripten",
+      "description": "Release build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "PLATFORM": "Web",
+        "USE_IMGUI": "ON",
+        "BUILD_EXAMPLES": "OFF"
+      }
     }
   ]
 }

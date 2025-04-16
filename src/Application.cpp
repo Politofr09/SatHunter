@@ -9,11 +9,31 @@
 
 #include <chrono>
 
+#ifdef PLATFORM_WEB
+#include <emscripten/emscripten.h>
+
+// https://github.com/guasam/raylib-web-starter/src/main.cpp
+EM_JS(int, get_canvas_width, (), {
+return available_screen_width();
+	}
+);
+EM_JS(int, get_canvas_height, (), {
+return available_screen_height();
+	}
+);
+
+int get_canvas_width();
+int get_canvas_height();
+#endif
+
 namespace SatHunter {
 
 void Application::Run()
 {
 	Initialize();
+#ifdef PLATFORM_WEB
+	emscripten_set_main_loop(Tick, 0, 1);
+#endif
 		
 	while (!WindowShouldClose())
 	{
@@ -50,9 +70,12 @@ void Application::Initialize()
 	SetupImGuiStyle();
 
 	// TLE fetching and caching
+#ifndef EMSCRIPTEN
 	CheckTLEs(m_Config.General.TleUrl);
 	m_TLEs = LoadTLEs();
-
+#else
+	m_TLEs = GetTLEsFromWeb(m_Config.General.TleUrl);
+#endif
 	m_StartTime = libsgp4::DateTime::Now();
 
 	LoadResources();
@@ -99,8 +122,18 @@ void Application::Tick()
 
 		rlImGuiBegin();
 
+
+		ImVec2 ViewportDimensions;
+#ifdef PLATFORM_WEB
+		ViewportDimensions.x = get_canvas_width();
+		ViewportDimensions.y = get_canvas_height();
+#else
+		ViewportDimensions.x = GetScreenWidth();
+		ViewportDimensions.y = GetScreenHeight();
+#endif
+
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
-		ImGui::SetNextWindowSize(ImVec2(float(GetScreenWidth()), float(GetScreenHeight())));
+		ImGui::SetNextWindowSize(ViewportDimensions);
 
 		ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoBringToFrontOnFocus |                 // we just want to use this window as a host for the menubar and docking
 			ImGuiWindowFlags_NoNavFocus |                                                      // so turn off everything that would make it act like a window
