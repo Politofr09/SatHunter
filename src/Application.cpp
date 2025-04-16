@@ -682,16 +682,19 @@ void Application::DrawPolarView()
 			if (!passes.empty())
 			{
 				const PassDetails& currentPass = passes[0];
-
-				if (!currentPass.PointsTopocentric.empty())
+				if (currentPass.AOS.Ticks() >= libsgp4::DateTime::Now().Ticks()
+				&&  currentPass.LOS.Ticks() <= libsgp4::DateTime::Now().Ticks())
 				{
-					for (int i = 0; i < currentPass.PointsTopocentric.size() - 1; i++)
+					if (!currentPass.PointsTopocentric.empty())
 					{
-						draw_list->AddLine(
-							TopoToXY(currentPass.PointsTopocentric[i]),
-							TopoToXY(currentPass.PointsTopocentric[i + 1]),
-							IM_COL32(255, 255, 255, 255)
-						);
+						for (int i = 0; i < currentPass.PointsTopocentric.size() - 1; i++)
+						{
+							draw_list->AddLine(
+								TopoToXY(currentPass.PointsTopocentric[i]),
+								TopoToXY(currentPass.PointsTopocentric[i + 1]),
+								IM_COL32(255, 255, 255, 255)
+							);
+						}
 					}
 				}
 			}
