@@ -7,6 +7,8 @@
 #include <raymath.h>
 #include <imgui.h>
 
+#include <chrono>
+
 namespace SatHunter {
 
 void Application::Run()
@@ -657,18 +659,44 @@ void Application::DrawPolarView()
 		}
 
 		libsgp4::CoordTopocentric topo = m_Config.Tracker.GroundStation.GetLookAngle(m_SelectedSatellite->GetEci());
+		auto TopoToXY = [&](libsgp4::CoordTopocentric coordTopo) -> ImVec2
+		{
+			float azimuth_rad = coordTopo.azimuth;  // Azimuth in radians
+			float elevation_deg = coordTopo.elevation * RAD2DEG; // Elevation in degrees
 
+			float norm = 1 - elevation_deg / 90.0f;
 
+			float x = center.x + radius * sinf(azimuth_rad) * norm;
+			float y = center.y - radius * cosf(azimuth_rad) * norm;
 
-		float azimuth_rad = topo.azimuth;  // Azimuth in radians
-		float elevation_deg = topo.elevation * RAD2DEG; // Elevation in degrees
+			return ImVec2(x, y);
+		};
+		if (m_PassData.find(m_SelectedSatellite->GetName()) != m_PassData.end())
+		{
+			const auto& passes = m_PassData[m_SelectedSatellite->GetName()];
+			if (!passes.empty())
+			{
+				const PassDetails& currentPass = passes[0];
 
-		float norm = 1 - elevation_deg / 90.0f;
+				if (!currentPass.PointsTopocentric.empty())
+				{
+					for (int i = 0; i < currentPass.PointsTopocentric.size() - 1; i++)
+					{
+						draw_list->AddLine(
+							TopoToXY(currentPass.PointsTopocentric[i]),
+							TopoToXY(currentPass.PointsTopocentric[i + 1]),
+							IM_COL32(255, 255, 255, 255)
+						);
+					}
+				}
+			}
+		}
 
-		float x = center.x + radius * sinf(azimuth_rad) * norm;
-		float y = center.y - radius * cosf(azimuth_rad) * norm;
-
-		draw_list->AddCircleFilled(ImVec2(x, y), 5.0f, IM_COL32(255, 0, 0, 255)); // Red point, size 5
+		if (topo.elevation > 0)
+		{
+			// Draw it anyways; maybe it's geostationary
+			draw_list->AddCircleFilled(TopoToXY(topo), 5.0f, IM_COL32(255, 0, 0, 255)); // Red point, size 5
+		}
 	}
 	ImGui::End();
 }
@@ -715,6 +743,8 @@ void Application::DrawSkyGlance()
 		drawList->AddRect(canvasPos, canvasEnd, IM_COL32(255, 255, 255, 120));
 
 		int row = 0;
+		PassDetails* nextPass = nullptr;
+		std::string nextPassSatName = "";
 
 		for (auto& [satName, passes] : m_PassData)
 		{
@@ -724,8 +754,8 @@ void Application::DrawSkyGlance()
 
 			for (auto& pass : passes)
 			{
-				libsgp4::TimeSpan AOS(pass.AOS.Ticks() - m_StartTime.Ticks());
-				libsgp4::TimeSpan LOS(pass.LOS.Ticks() - m_StartTime.Ticks());
+				libsgp4::TimeSpan AOS(pass.AOS.Ticks() - libsgp4::DateTime::Now().Ticks());
+				libsgp4::TimeSpan LOS(pass.LOS.Ticks() - libsgp4::DateTime::Now().Ticks());
 				double AOSTimeSeconds = AOS.TotalSeconds();
 				double LOSTimeSeconds = LOS.TotalSeconds();
 
@@ -737,11 +767,31 @@ void Application::DrawSkyGlance()
 				drawList->AddRectFilled(
 					ImVec2(x0, y),
 					ImVec2(x1, y + rowHeight),
-					IM_COL32(100, 200, 255, 200) // light blue-ish bar
+					IM_COL32(100, 200, 255, 200)
 				);
+
+				if (!nextPass || pass.AOS < nextPass->AOS)
+				{
+					nextPass = &pass;
+					nextPassSatName = satName;
+				}
 			}
 
 			row++;
+		}
+
+		// Draw next pass
+		if (nextPass)
+		{
+			ImGui::SetCursorPosY(canvasSize.y);
+		
+			auto offset = std::chrono::current_zone()->get_info(std::chrono::system_clock::now()).offset;
+
+			int hours = nextPass->AOS.AddSeconds(offset.count()).Hour();
+			int minutes = nextPass->AOS.Minute();
+			int seconds = nextPass->AOS.Second();
+
+			ImGui::Text("Next pass: %s at %02d:%02d:%02d", nextPassSatName.c_str(), hours, minutes, seconds);
 		}
 
 		if (ImGui::IsWindowHovered())
@@ -770,18 +820,21 @@ void Application::DrawSkyGlance()
 	ImGui::End();
 }
 
-std::vector<PassDetails> Application::PredictPass(Satellite* sat, const libsgp4::DateTime& start, const libsgp4::DateTime& end, float minElevation)
+std::vector<Application::PassDetails> Application::PredictPass(Satellite* sat, const libsgp4::DateTime& start, const libsgp4::DateTime& end, float minElevation)
 {
 	std::vector<PassDetails> passes;
 	PassDetails currentPass;
 	bool inPass = false;
-
+	bool losMarked = false;
 	libsgp4::DateTime currentTime = start;
 
 	while (currentTime <= end)
 	{
 		libsgp4::CoordTopocentric topo = m_Config.Tracker.GroundStation.GetLookAngle(sat->GetEciTimed(currentTime));
 		float elevationDeg = topo.elevation * RAD2DEG;
+
+		if (elevationDeg >= 0)
+			currentPass.PointsTopocentric.push_back(topo);
 
 		if (elevationDeg >= minElevation)
 		{

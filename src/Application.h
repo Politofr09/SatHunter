@@ -81,6 +81,15 @@ private:
 	bool m_CanControlCamera = false;
 
 private:
+	struct PassDetails
+	{
+		libsgp4::DateTime AOS; // Acquisition Of Signal
+		libsgp4::DateTime LOS; // Lost Of Signal
+		float MaxElevation = 0.0f;
+
+		std::vector<libsgp4::CoordTopocentric> PointsTopocentric;
+	};
+	
 	// Pass prediction
 	using PassData = std::unordered_map<std::string, std::vector<PassDetails>>;
 

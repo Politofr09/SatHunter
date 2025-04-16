@@ -10,13 +10,6 @@
 
 namespace SatHunter {
 
-struct PassDetails
-{
-	libsgp4::DateTime AOS; // Acquisition Of Signal
-	libsgp4::DateTime LOS; // Lost Of Signal
-	float MaxElevation;
-};
-
 struct OrbitPath
 {
 	std::vector<Vector3> Points3D;
