@@ -66,6 +66,7 @@ void Application::Initialize()
 	TrySelectSatellite(m_SatelliteList[0]);
 
 	m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
+
 }
 
 void Application::Tick()
@@ -588,7 +589,11 @@ void Application::DrawSatelliteList()
 			{
 				delete sat;
 				m_SatelliteList.erase(i + m_SatelliteList.begin());
-				if (selected) m_SelectedSatellite = m_SatelliteList[0];
+				if (selected) 
+				{
+					m_SelectedSatellite = m_SatelliteList[0];
+					SetWindowTitle(std::string("SatHunter: " + m_SelectedSatellite->GetName()).c_str());
+				}
 				ImGui::PopID();
 				// Recompute the pass list
 				m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));

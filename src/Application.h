@@ -75,7 +75,7 @@ private:
 	libsgp4::DateTime m_StartTime;
 
 	Satellite* m_SelectedSatellite = nullptr;
-	std::vector<Satellite*> m_SatelliteList;
+	std::vector<Satellite*> m_SatelliteList{};
 
 	bool m_FollowSatellite = false;
 	bool m_CanControlCamera = false;

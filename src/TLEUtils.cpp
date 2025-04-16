@@ -72,6 +72,7 @@ bool CheckTLEs(const std::string url)
 	tsFile.close();
 
 	std::cout << "TLE data updated and timestamp saved. TLE local file will expire in 24 hours." << std::endl;
+	return true;
 }
 
 std::unordered_map<std::string, libsgp4::Tle> LoadTLEs()
@@ -91,12 +92,17 @@ std::unordered_map<std::string, libsgp4::Tle> LoadTLEs()
 		// Remove trailing spaces from satName
 		satName.erase(std::find_if(satName.rbegin(), satName.rend(), [](unsigned char ch) {
 			return !std::isspace(ch);  // Find the first non-space character from the end
-			}).base(), satName.end());
+		}).base(), satName.end());
 
 		if (!std::getline(file, line1)) break;
 		if (!std::getline(file, line2)) break;
 
 		try {
+			#ifdef __linux__
+			line1.pop_back();
+			line2.pop_back();
+			#endif
+
 			libsgp4::Tle tle(satName, line1, line2);
 			tles.emplace(satName, std::move(tle));
 		}
