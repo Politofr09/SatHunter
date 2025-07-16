@@ -52,6 +52,50 @@ libsgp4::Eci Satellite::GetEciTimed(const libsgp4::DateTime dt) const
 	return m_SGP4Instance.FindPosition(dt);
 }
 
+#define EARTH_RADIUS_KM 6371
+std::vector<libsgp4::CoordGeodetic> Satellite::GetLatLonCoverage(float minElevationDeg) const
+{
+	std::vector<libsgp4::CoordGeodetic> coveragePoints;
+
+	// Current satellite geodetic position
+	libsgp4::CoordGeodetic satGeo = GetGeodetic();
+
+	// Altitude in km
+	double alt = satGeo.altitude;
+
+	// Convert min elevation angle to radians
+	double elevRad = minElevationDeg * DEG2RAD;
+
+	// Compute Earth central angle (in radians)
+	// from satellite to horizon given min elevation
+	double horizonAngle = std::acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + alt)) - elevRad;
+
+	double groundRange = EARTH_RADIUS_KM * horizonAngle;
+
+	for (int azDeg = 0; azDeg < 360; ++azDeg)
+	{
+		double azRad = azDeg * DEG2RAD;
+
+		double newLat = std::asin(std::sin(satGeo.latitude) * std::cos(groundRange / EARTH_RADIUS_KM) +
+			std::cos(satGeo.latitude) * std::sin(groundRange / EARTH_RADIUS_KM) * std::cos(azRad));
+
+		double newLon = satGeo.longitude + std::atan2(std::sin(azRad) * std::sin(groundRange / EARTH_RADIUS_KM) * std::cos(satGeo.latitude),
+			std::cos(groundRange / EARTH_RADIUS_KM) - std::sin(satGeo.latitude) * std::sin(newLat));
+
+		if (newLon < -PI) newLon += 2 * PI;
+		if (newLon > PI) newLon -= 2 * PI;
+
+		libsgp4::CoordGeodetic point;
+		point.latitude = newLat;
+		point.longitude = newLon;
+		point.altitude = 0.0;
+
+		coveragePoints.push_back(point);
+	}
+
+	return coveragePoints;
+}
+
 Vector3 GetSatellitePosition(libsgp4::SGP4 sgp4, libsgp4::DateTime dt)
 {
 	libsgp4::Eci satPosECI = sgp4.FindPosition(dt);

@@ -487,6 +487,7 @@ void Application::DrawMap()
 
 			DrawLineEx(p1, p2, orbitLength, orbitColor);
 		}
+
 		orbitIndex++;
 	}
 
@@ -511,6 +512,24 @@ void Application::DrawMap()
 			SetWindowTitle(std::string("SatHunter: " + m_SelectedSatellite->GetName()).c_str());
 		}
 
+		std::vector<libsgp4::CoordGeodetic> latLonCoveragePoints = sat->GetLatLonCoverage(m_MinElevationCoverage);
+		for (int i = 0; i < 360 - 1; i++)
+		{
+			Vector2 p1 = LatLonToRaylib(latLonCoveragePoints[i], m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
+			Vector2 p2 = LatLonToRaylib(latLonCoveragePoints[i + 1], m_MapRenderTarget.texture.width, m_MapRenderTarget.texture.height, dest);
+
+			// Skip them if too far from each other, will create werid rendering issues 
+			if (Vector2Distance(p1, p2) > m_MapRenderTarget.texture.width / 2.0f)
+			{
+				DrawCircleV(p1, 0.5f, BLACK);
+				DrawCircleV(p2, 0.5f, BLACK);
+			}
+			else
+			{
+				DrawLineEx(p1, p2, 1.0f, BLACK);
+			}
+		}
+
 		DrawTextEx(m_DroidSansFont, sat->GetName().c_str(), { satPos.x - MeasureTextEx(m_DroidSansFont, sat->GetName().c_str(), 16, 1.0).x / 2.0f, satPos.y - 5 }, 16, 1.0, BLACK);
 		orbitIndex++;
 	}
@@ -524,7 +543,7 @@ void Application::DrawMap()
 
 void Application::DrawMapViewport()
 {
-	ImGui::Begin("World map", &m_Draw3DGlobe);
+	ImGui::Begin("World map", &m_DrawWorldMap);
 	{
 		if (m_MapRenderTarget.texture.width != ImGui::GetContentRegionAvail().x || m_MapRenderTarget.texture.height != ImGui::GetContentRegionAvail().y)
 		{
@@ -538,6 +557,12 @@ void Application::DrawMapViewport()
 		};
 
 		rlImGuiImageRenderTexture(&m_MapRenderTarget);
+		
+		ImVec2 sliderPos = { m_MapRenderTarget.texture.width / 2.0f - 200.0f, (float)m_MapRenderTarget.texture.height };
+
+		ImGui::SetCursorScreenPos(sliderPos);
+		ImGui::SetNextItemWidth(400);
+		ImGui::SliderFloat("##SliderCoverage", &m_MinElevationCoverage, 0.0f, 25.0f, "Min Elev: %.1f");
 	}
 	ImGui::End();
 }

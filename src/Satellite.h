@@ -48,6 +48,9 @@ public:
 	libsgp4::Eci GetEci() const;
 	libsgp4::Eci GetEciTimed(const libsgp4::DateTime dt) const;
 
+	// Returns a vector of 360 Lat/Lon points
+	std::vector<libsgp4::CoordGeodetic> GetLatLonCoverage(float minElevation) const;
+
 private:
 	libsgp4::SGP4 m_SGP4Instance;
 	libsgp4::Tle  m_TLE;

@@ -80,6 +80,8 @@ private:
 	bool m_FollowSatellite = false;
 	bool m_CanControlCamera = false;
 
+	float m_MinElevationCoverage = 10.0f; // Minimum elevation in degrees used for the area of coverage 
+
 private:
 	struct PassDetails
 	{
