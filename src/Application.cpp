@@ -107,6 +107,18 @@ void Application::Tick()
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
 		ImGui::SetNextWindowSize(ViewportDimensions);
 
+		if (IsKeyPressed(KEY_F11))
+		{
+			ToggleBorderlessWindowed();
+			MaximizeWindow();
+
+			ViewportDimensions.x = GetScreenWidth();
+			ViewportDimensions.y = GetScreenHeight();
+
+			ImGui::SetNextWindowPos(ImVec2(0, 0));
+			ImGui::SetNextWindowSize(ViewportDimensions);
+		}
+
 		ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoBringToFrontOnFocus |                 // we just want to use this window as a host for the menubar and docking
 			ImGuiWindowFlags_NoNavFocus |                                                      // so turn off everything that would make it act like a window
 			ImGuiWindowFlags_NoDocking |
