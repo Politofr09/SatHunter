@@ -9,31 +9,11 @@
 
 #include <chrono>
 
-#ifdef PLATFORM_WEB
-#include <emscripten/emscripten.h>
-
-// https://github.com/guasam/raylib-web-starter/src/main.cpp
-EM_JS(int, get_canvas_width, (), {
-return available_screen_width();
-	}
-);
-EM_JS(int, get_canvas_height, (), {
-return available_screen_height();
-	}
-);
-
-int get_canvas_width();
-int get_canvas_height();
-#endif
-
 namespace SatHunter {
 
 void Application::Run()
 {
 	Initialize();
-#ifdef PLATFORM_WEB
-	emscripten_set_main_loop(Tick, 0, 1);
-#endif
 		
 	while (!WindowShouldClose())
 	{
@@ -70,12 +50,9 @@ void Application::Initialize()
 	SetupImGuiStyle();
 
 	// TLE fetching and caching
-#ifndef EMSCRIPTEN
 	CheckTLEs(m_Config.General.TleUrl);
 	m_TLEs = LoadTLEs();
-#else
-	m_TLEs = GetTLEsFromWeb(m_Config.General.TleUrl);
-#endif
+
 	m_StartTime = libsgp4::DateTime::Now();
 
 	LoadResources();
@@ -89,7 +66,6 @@ void Application::Initialize()
 	TrySelectSatellite(m_SatelliteList[0]);
 
 	m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
-
 }
 
 void Application::Tick()
@@ -124,13 +100,9 @@ void Application::Tick()
 
 
 		ImVec2 ViewportDimensions;
-#ifdef PLATFORM_WEB
-		ViewportDimensions.x = get_canvas_width();
-		ViewportDimensions.y = get_canvas_height();
-#else
+
 		ViewportDimensions.x = GetScreenWidth();
 		ViewportDimensions.y = GetScreenHeight();
-#endif
 
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
 		ImGui::SetNextWindowSize(ViewportDimensions);
@@ -203,7 +175,8 @@ void Application::LoadResources()
 	m_EarthModel = LoadModel("res/Earth_1_12756.glb");
 	m_SatelliteModel = LoadModel("res/satellite.glb");
 	m_LocationBilboardMap = LoadTexture("res/location-bilboard-map.png");
-	m_WorldMapTexture2k = LoadTexture("res/2k_earth_daymap.jpg"); // There's also a night version maybe looks cooler
+
+	m_WorldMapTexture = LoadTexture("res/2k_earth_daymap.jpg");
 
 	m_DroidSansFont = LoadFontEx("res/droid-sans/DroidSans-Bold.ttf", 32, NULL, 0);
 }
@@ -382,7 +355,6 @@ void Application::Draw3DView()
 		};
 	}
 
-
 	// Draw orbit
 	int orbitIndex = 0;
 	for (const auto& sat : m_SatelliteList)
@@ -461,15 +433,15 @@ void Application::DrawMap()
 	BeginTextureMode(m_MapRenderTarget);
 	ClearBackground(RAYWHITE);
 
-	float texAspect = (float)m_WorldMapTexture2k.width / m_WorldMapTexture2k.height;
+	float texAspect = (float)m_WorldMapTexture.width / m_WorldMapTexture.height;
 	float targetAspect = (float)m_MapRenderTarget.texture.width / m_MapRenderTarget.texture.height;
 
 	float scale = (targetAspect > texAspect)
-		? (float)m_MapRenderTarget.texture.height / m_WorldMapTexture2k.height
-		: (float)m_MapRenderTarget.texture.width / m_WorldMapTexture2k.width;
+		? (float)m_MapRenderTarget.texture.height / m_WorldMapTexture.height
+		: (float)m_MapRenderTarget.texture.width / m_WorldMapTexture.width;
 
-	float drawWidth = m_WorldMapTexture2k.width * scale;
-	float drawHeight = m_WorldMapTexture2k.height * scale;
+	float drawWidth = m_WorldMapTexture.width * scale;
+	float drawHeight = m_WorldMapTexture.height * scale;
 
 	Rectangle dest = {
 			(m_MapRenderTarget.texture.width - drawWidth) * 0.5f,
@@ -478,8 +450,8 @@ void Application::DrawMap()
 			drawHeight
 	};
 
-	DrawTexturePro(m_WorldMapTexture2k,
-		{ 0, 0, (float)m_WorldMapTexture2k.width, (float)m_WorldMapTexture2k.height },
+	DrawTexturePro(m_WorldMapTexture,
+		{ 0, 0, (float)m_WorldMapTexture.width, (float)m_WorldMapTexture.height },
 		dest, 
 		{ 0, 0 },
 		0.0f,

@@ -68,7 +68,7 @@ private:
 	Model m_EarthModel;
 	Model m_SatelliteModel;
 	Texture m_LocationBilboardMap;
-	Texture m_WorldMapTexture2k;
+	Texture m_WorldMapTexture;
 	Font m_DroidSansFont;
 
 	std::unordered_map<std::string, libsgp4::Tle> m_TLEs;

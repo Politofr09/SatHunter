@@ -20,6 +20,7 @@ struct Config
 		libsgp4::Observer GroundStation = libsgp4::Observer(0, 0, 0);
 		std::string GroundStationLabel = "Ground station";
 	} Tracker;
+
 };
 
 Config LoadConfigFile();

@@ -13,8 +13,4 @@ bool CheckTLEs(const std::string url);
 
 std::unordered_map<std::string, libsgp4::Tle> LoadTLEs();
 
-#ifdef EMSCRIPTEN
-std::unordered_map<std::string, libsgp4::Tle> GetTLEsForWeb();
-#endif
-
 }
