@@ -15,28 +15,37 @@ namespace SatHunter {
 // Checks if weather.txt exists and weather.txt.timestamp is less than 24h old
 bool CheckTimestampFile()
 {
-	if (!std::filesystem::exists(TLE_FILE))
-	{
-		return false;
-	}
+    if (!std::filesystem::exists(TLE_FILE))
+    {
+        return false;
+    }
 
-	std::ifstream tsFile(std::string(TLE_FILE) + ".timestamp");
-	if (!tsFile) return false;
+    std::ifstream tsFile(std::string(TLE_FILE) + ".timestamp");
+    if (!tsFile) return false;
 
-	std::stringstream buffer;
-	buffer << tsFile.rdbuf();
-	std::istringstream data(buffer.str());
+    std::string line;
+    std::getline(tsFile, line);
+    if (line.size() < 16) return false;  // Needs at least "YYYY-MM-DDTHH:MM"
 
-	std::chrono::sys_time<std::chrono::milliseconds> timestamp;
-	data >> std::chrono::parse("%FT%T%Ez", timestamp);
-	if (data.fail())
-		return false;
+    std::string truncated = line.substr(0, 16);
 
-	auto now = std::chrono::system_clock::now();
+    std::tm tm = {};
+    std::istringstream ss(truncated);
+    ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M");
+    if (ss.fail()) return false;
 
-	auto duration = now - timestamp;
+#if defined(_WIN32)
+    std::time_t tt = _mkgmtime(&tm); // Windows: treat as UTC
+#else
+    std::time_t tt = timegm(&tm);    // Linux: treat as UTC
+#endif
 
-	return duration >= std::chrono::hours(24);
+    auto timestamp = std::chrono::system_clock::from_time_t(tt);
+    auto now = std::chrono::system_clock::now();
+
+    auto duration = now - timestamp;
+
+    return duration < std::chrono::hours(24); // Check if *less* than 24h
 }
 
 bool CheckTLEs(const std::string url)
