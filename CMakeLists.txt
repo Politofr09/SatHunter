@@ -15,8 +15,9 @@ add_executable(${PROJECT_NAME}
 "src/Satellite.h" 
 "src/Satellite.cpp" 
 "src/Config.h"
-"src/Config.cpp"
-)
+"src/Config.cpp" 
+"src/Skybox.h"
+"src/Skybox.cpp")
 target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_NAME}/src")
 
 add_subdirectory("${CMAKE_SOURCE_DIR}/vendor/raylib")

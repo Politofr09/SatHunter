@@ -119,14 +119,13 @@ OrbitPath GetOrbitPath(libsgp4::SGP4 sgp4)
 	libsgp4::DateTime start = libsgp4::DateTime::Now().AddMinutes(-10);
 
 	OrbitPath orbit;
-	orbit.Points3D.resize(180);
-	orbit.PointsGeodetic.resize(180);
+
 	for (int i = 0; i < 180; i++)
 	{
 		libsgp4::DateTime dt = start.AddMinutes(i);
-		orbit.Points3D[i] = GetSatellitePosition(sgp4, dt);
-
-		orbit.PointsGeodetic[i] = sgp4.FindPosition(dt).ToGeodetic();
+		orbit.Points3D.push_back(GetSatellitePosition(sgp4, dt));
+		orbit.PointsEci.push_back(sgp4.FindPosition(dt));
+		orbit.PointsGeodetic.push_back(sgp4.FindPosition(dt).ToGeodetic());
 	}
 
 	return orbit;

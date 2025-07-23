@@ -2,6 +2,7 @@
 
 #include "Satellite.h"
 #include "Config.h"
+#include "Skybox.h"
 
 #include <raylib.h>
 #include <CoordTopocentric.h>
@@ -31,7 +32,6 @@ private:
 	void Cleanup();
 
 	void LoadResources();
-	void ControlCamera();
 	void SetupImGuiStyle();
 
 	// Select a satellite *from	 m_SatelliteList*
@@ -39,10 +39,16 @@ private:
 
 
 private:
+	RenderTexture m_GlobeRenderTarget;
 	bool m_Draw3DGlobe = true;
-	RenderTexture m_3DRenderTarget;
-	void Draw3DView();		// Raylib logic -> 3D globe
-	void Draw3DViewport();  // ImGui -> Display the render target
+	void DrawGlobeView();		// Raylib logic -> 3D globe
+	void DrawGlobeViewport();  // ImGui -> Display the render target
+	void ControlGlobeCamera();
+	Camera m_GlobeCamera;
+	float m_GlobeZoom = 2.0f;
+	bool m_FollowSatellite = false;
+	bool m_CanControlGlobeCamera = false;
+
 
 	RenderTexture m_MapRenderTarget;
 	bool m_DrawWorldMap = true;
@@ -50,35 +56,40 @@ private:
 	void DrawMapViewport(); // ImGui -> Display the render target 
 	Vector2 m_MapWindowPosition;
 
+
+	RenderTexture m_SkyRenderTarget;
+	bool m_DrawSkyView = true;
+	void DrawSkyView();
+	void DrawSkyViewport();
+	Camera m_SkyCamera;
+	bool m_CanControlSkyCamera = false;
+
+
 	bool m_DrawSatelliteList = true;
 	void DrawSatelliteList();
 
 	bool m_DrawPolarView = true;
 	void DrawPolarView();
 
-	bool m_DrawSkyGlance = true;
-	void DrawSkyGlance();
+	bool m_DrawNextPasses = true;
+	void DrawNextPasses();
 
-private:
+
 	Config m_Config;
-
-	Camera m_Camera;
-	float m_Zoom = 2.0f;
 
 	Model m_EarthModel;
 	Model m_SatelliteModel;
 	Texture m_LocationBilboardMap;
+	Texture m_SatelliteBilboard;
 	Texture m_WorldMapTexture;
 	Font m_DroidSansFont;
+	Skybox m_Skybox;
 
 	std::unordered_map<std::string, libsgp4::Tle> m_TLEs;
 	libsgp4::DateTime m_StartTime;
 
 	Satellite* m_SelectedSatellite = nullptr;
 	std::vector<Satellite*> m_SatelliteList{};
-
-	bool m_FollowSatellite = false;
-	bool m_CanControlCamera = false;
 
 	float m_MinElevationCoverage = 10.0f; // Minimum elevation in degrees used for the area of coverage 
 

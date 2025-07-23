@@ -32,11 +32,19 @@ void Application::Initialize()
 	MaximizeWindow();
 	SetTargetFPS(60);
 
-	m_Camera = {
+	m_GlobeCamera = {
 		.position = { -10, 10, -10 },
 		.target = { 0, 0, 0 },
 		.up = { 0, 1, 0 },
 		.fovy = 45.0f,
+		.projection = CAMERA_PERSPECTIVE,
+	};
+	
+	m_SkyCamera = {
+		.position = { 0, 0, 0 },
+		.target = { 0, 0, -1 },
+		.up = { 0, 1, 0 },
+		.fovy = 90.0f,
 		.projection = CAMERA_PERSPECTIVE,
 	};
 
@@ -70,8 +78,9 @@ void Application::Initialize()
 
 void Application::Tick()
 {
-	if (m_Draw3DGlobe) Draw3DView();
+	if (m_Draw3DGlobe) DrawGlobeView();
 	if (m_DrawWorldMap) DrawMap();
+	if (m_DrawSkyView) DrawSkyView();
 
 	// Update the orbits and the passes every 2 minutes
 	libsgp4::DateTime now = libsgp4::DateTime::Now();
@@ -153,8 +162,9 @@ void Application::Tick()
 					ImGui::Checkbox(ICON_FA_SATELLITE " Satellite list", &m_DrawSatelliteList);
 					ImGui::Checkbox(ICON_FA_EARTH_EUROPE " 3D globe", &m_Draw3DGlobe);
 					ImGui::Checkbox(ICON_FA_MAP " 2D map", &m_DrawWorldMap);
+					ImGui::Checkbox(ICON_FA_PERSON "Sky view", &m_DrawSkyView);
 					ImGui::Checkbox(ICON_FA_CIRCLE " Polar view", &m_DrawPolarView);
-					ImGui::Checkbox(ICON_FA_GLOBE " Sky at a glance" , &m_DrawSkyGlance);
+					ImGui::Checkbox(ICON_FA_GLOBE " Next passes" , &m_DrawNextPasses);
 
 					ImGui::EndMenu();
 				}
@@ -165,10 +175,11 @@ void Application::Tick()
 		ImGui::End();
 
 		if (m_DrawSatelliteList) DrawSatelliteList();
-		if (m_Draw3DGlobe)       Draw3DViewport();
+		if (m_Draw3DGlobe)       DrawGlobeViewport();
 		if (m_DrawWorldMap)		 DrawMapViewport();
+		if (m_DrawSkyView)		 DrawSkyViewport();
 		if (m_DrawPolarView)	 DrawPolarView();
-		if (m_DrawSkyGlance)	 DrawSkyGlance();
+		if (m_DrawNextPasses)	 DrawNextPasses();
 
 		rlImGuiEnd();
 
@@ -177,23 +188,26 @@ void Application::Tick()
 
 void Application::Cleanup()
 {
-	UnloadRenderTexture(m_3DRenderTarget);
+	UnloadRenderTexture(m_GlobeRenderTarget);
 	rlImGuiEnd();
 	CloseWindow();
 }
 
 void Application::LoadResources()
 {
+	m_Skybox.Load("res/scythian_tombs_2_2k.hdr");
+
 	m_EarthModel = LoadModel("res/Earth_1_12756.glb");
 	m_SatelliteModel = LoadModel("res/satellite.glb");
 	m_LocationBilboardMap = LoadTexture("res/location-bilboard-map.png");
+	m_SatelliteBilboard = LoadTexture("res/satellite-icon-bilboard.png");
 
 	m_WorldMapTexture = LoadTexture("res/2k_earth_daymap.jpg");
 
 	m_DroidSansFont = LoadFontEx("res/droid-sans/DroidSans-Bold.ttf", 32, NULL, 0);
 }
 
-void Application::ControlCamera()
+void Application::ControlGlobeCamera()
 {
 	Matrix rotation = MatrixIdentity();
 
@@ -201,16 +215,16 @@ void Application::ControlCamera()
 	{
 		rotation = MatrixRotate({ 0,1,0 }, -GetMouseDelta().x * 0.005);
 
-		Vector3 right = Vector3CrossProduct(m_Camera.up, Vector3Subtract(m_Camera.position, m_Camera.target));
+		Vector3 right = Vector3CrossProduct(m_GlobeCamera.up, Vector3Subtract(m_GlobeCamera.position, m_GlobeCamera.target));
 		right = Vector3Normalize(right);
 
 		rotation = MatrixMultiply(rotation, MatrixRotate(right, -GetMouseDelta().y * 0.005));
 	}
 
-	Vector3 view = Vector3Subtract(m_Camera.position, m_Camera.target);
+	Vector3 view = Vector3Subtract(m_GlobeCamera.position, m_GlobeCamera.target);
 	
 	view = Vector3Transform(view, rotation);
-	m_Camera.position = Vector3Add(m_Camera.target, view);
+	m_GlobeCamera.position = Vector3Add(m_GlobeCamera.target, view);
 
 	float zoom = GetMouseWheelMove() * 0.5f;
 	if (zoom != 0)
@@ -220,9 +234,8 @@ void Application::ControlCamera()
 
 		view = Vector3Normalize(view);
 		view = Vector3Scale(view, newViewLen);
-		m_Camera.position = Vector3Add(m_Camera.target, view);
+		m_GlobeCamera.position = Vector3Add(m_GlobeCamera.target, view);
 	}
-
 }
 
 void Application::SetupImGuiStyle()
@@ -328,11 +341,11 @@ bool Application::TrySelectSatellite(Satellite* satellite)
 	return true;
 }
 
-void Application::Draw3DView()
+void Application::DrawGlobeView()
 {
-	BeginTextureMode(m_3DRenderTarget);
+	BeginTextureMode(m_GlobeRenderTarget);
 	ClearBackground(BLACK);
-	BeginMode3D(m_Camera);
+	BeginMode3D(m_GlobeCamera);
 
 	DrawGrid(50, 10);
 
@@ -345,25 +358,25 @@ void Application::Draw3DView()
 		m_FollowSatellite = !m_FollowSatellite;
 	}
 
-	if (m_CanControlCamera)
+	if (m_CanControlGlobeCamera)
 	{
-		m_Zoom -= GetMouseWheelMove() / 10;
-		m_Zoom = Clamp(m_Zoom, 1.1f, 10.0f);
+		m_GlobeZoom -= GetMouseWheelMove() / 10;
+		m_GlobeZoom = Clamp(m_GlobeZoom, 1.1f, 10.0f);
 	}
 	if (!m_FollowSatellite)
 	{
 		//UpdateCamera(&m_Camera, CAMERA_ORBITAL);
-		if (m_CanControlCamera)
+		if (m_CanControlGlobeCamera)
 		{
-			ControlCamera();
+			ControlGlobeCamera();
 		}
 	}
 	else
 	{
-		m_Camera.position = {
-			satPos.x * m_Zoom,
-			satPos.y * m_Zoom,
-			satPos.z * m_Zoom
+		m_GlobeCamera.position = {
+			satPos.x * m_GlobeZoom,
+			satPos.y * m_GlobeZoom,
+			satPos.z * m_GlobeZoom
 		};
 	}
 
@@ -390,17 +403,17 @@ void Application::Draw3DView()
 	Vector3 groundStationECEF = ObserverToECEF(m_Config.Tracker.GroundStation);
 	Vector3 groundStationPos = {
 		groundStationECEF.y / 1260000, // Honestly don't know why the scale is so messed up
-	0.1 + groundStationECEF.z / 1260000, // I would've guessed '1260' but apparently it's another x1000...
+	0.1f + groundStationECEF.z / 1260000, // I would've guessed '1260' but apparently it's another x1000...
 		groundStationECEF.x / 1260000  // Just works
 	};
 
 	//DrawSphere(groundStationPos, 0.2f, RED);
-	DrawBillboard(m_Camera, m_LocationBilboardMap, groundStationPos, 0.5f, GREEN);
+	DrawBillboard(m_GlobeCamera, m_LocationBilboardMap, groundStationPos, 0.5f, GREEN);
 
 	EndMode3D();
 	for (const auto& sat : m_SatelliteList)
 	{
-		Vector2 satLabelPos = GetWorldToScreenEx(sat->GetPosition3D(), m_Camera, m_3DRenderTarget.texture.width, m_3DRenderTarget.texture.height);
+		Vector2 satLabelPos = GetWorldToScreenEx(sat->GetPosition3D(), m_GlobeCamera, m_GlobeRenderTarget.texture.width, m_GlobeRenderTarget.texture.height);
 		
 		if (sat == m_SelectedSatellite)
 		{
@@ -412,30 +425,33 @@ void Application::Draw3DView()
 		}
 	}
 
-	Vector2 groundLabelPos = GetWorldToScreenEx(groundStationPos, m_Camera, m_3DRenderTarget.texture.width, m_3DRenderTarget.texture.height);
+	Vector2 groundLabelPos = GetWorldToScreenEx(groundStationPos, m_GlobeCamera, m_GlobeRenderTarget.texture.width, m_GlobeRenderTarget.texture.height);
 	DrawTextEx(m_DroidSansFont, m_Config.Tracker.GroundStationLabel.c_str(), { groundLabelPos.x - MeasureTextEx(m_DroidSansFont, m_Config.Tracker.GroundStationLabel.c_str(), 32, 1.0).x / 2.0f, groundLabelPos.y }, 32, 1.0, GREEN);
+
+	if (m_FollowSatellite) DrawTextEx(m_DroidSansFont, "Press F1 to toggle camera controls", { 20, m_GlobeRenderTarget.texture.height - 20.0f }, 14, 1.0f, GRAY);
+	else DrawTextEx(m_DroidSansFont, "Press F1 to follow the satellite", { 20, m_GlobeRenderTarget.texture.height - 20.0f }, 14, 1.0f, GRAY);
 
 	EndTextureMode();
 }
 
-void Application::Draw3DViewport()
+void Application::DrawGlobeViewport()
 {
-	ImGui::Begin("3D representation", &m_Draw3DGlobe);
+	ImGui::Begin("3D Globe View", &m_Draw3DGlobe);
 	{
-		if (m_3DRenderTarget.texture.width != ImGui::GetContentRegionAvail().x || m_3DRenderTarget.texture.height != ImGui::GetContentRegionAvail().y)
+		if (m_GlobeRenderTarget.texture.width != ImGui::GetContentRegionAvail().x || m_GlobeRenderTarget.texture.height != ImGui::GetContentRegionAvail().y)
 		{
-			UnloadRenderTexture(m_3DRenderTarget);
-			m_3DRenderTarget = LoadRenderTexture(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
+			UnloadRenderTexture(m_GlobeRenderTarget);
+			m_GlobeRenderTarget = LoadRenderTexture(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
 		}
 
-		m_CanControlCamera = false;
+		m_CanControlGlobeCamera = false;
 		if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
 			&& ImGui::IsWindowHovered())
 		{
-			m_CanControlCamera = true;
+			m_CanControlGlobeCamera = true;
 		}
 
-		rlImGuiImageRenderTexture(&m_3DRenderTarget);
+		rlImGuiImageRenderTexture(&m_GlobeRenderTarget);
 	}
 	ImGui::End();
 }
@@ -570,11 +586,118 @@ void Application::DrawMapViewport()
 
 		rlImGuiImageRenderTexture(&m_MapRenderTarget);
 		
-		ImVec2 sliderPos = { m_MapRenderTarget.texture.width / 2.0f - 200.0f, (float)m_MapRenderTarget.texture.height };
+		ImVec2 sliderPos = { m_MapRenderTarget.texture.width / 2.0f - 200.0f + ImGui::GetWindowPos().x , (float)m_MapRenderTarget.texture.height + ImGui::GetWindowPos().y };
 
 		ImGui::SetCursorScreenPos(sliderPos);
 		ImGui::SetNextItemWidth(400);
 		ImGui::SliderFloat("##SliderCoverage", &m_MinElevationCoverage, 0.0f, 25.0f, "Min Elev: %.1f");
+	}
+	ImGui::End();
+}
+
+void Application::DrawSkyView()
+{
+	static float yaw = 90.0f;
+	static float pitch = 0.0f;
+
+	BeginTextureMode(m_SkyRenderTarget);
+	ClearBackground(BLACK);
+
+	if (m_CanControlSkyCamera)
+	{
+		m_SkyCamera.fovy -= GetMouseWheelMove() * 2.0f;
+		m_SkyCamera.fovy = Clamp(m_SkyCamera.fovy, 10, 170);
+
+		if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+		{
+			Vector2 mouseDelta = GetMouseDelta();
+			const float sensitivity = 0.003f;
+
+			yaw += -mouseDelta.x * sensitivity;
+			pitch += -mouseDelta.y * sensitivity;
+
+			// Clamp pitch to avoid gimbal lock
+			const float pitchLimit = 89.0f * DEG2RAD;
+			pitch = Clamp(pitch, -pitchLimit, pitchLimit);
+
+			// Calculate direction vector
+			Vector3 direction = {
+				cosf(pitch) * sinf(yaw),
+				sinf(pitch),
+				cosf(pitch) * cosf(yaw)
+			};
+
+			m_SkyCamera.target = Vector3Add(m_SkyCamera.position, direction);
+		}
+	}
+
+	BeginMode3D(m_SkyCamera);
+
+	m_Skybox.Draw();
+
+	auto TopoToXYZ = [&](const libsgp4::CoordTopocentric coordTopo) -> Vector3
+	{
+		float az = coordTopo.azimuth;     // in radians
+		float el = coordTopo.elevation;   // in radians
+
+		return Vector3{
+			cosf(el) * sinf(az),          // X (East)
+			sinf(el),                     // Y (Up)
+			-cosf(el) * cosf(az)          // Z (North into screen)
+		};
+	};
+	
+	int orbitIndex = 0;
+	for (const auto& sat : m_SatelliteList)
+	{
+		for (int i = 0; i < 180 - 1; i++)
+		{
+			libsgp4::CoordTopocentric topo1 = m_Config.Tracker.GroundStation.GetLookAngle(sat->GetOrbit().PointsEci[i]);
+			libsgp4::CoordTopocentric topo2 = m_Config.Tracker.GroundStation.GetLookAngle(sat->GetOrbit().PointsEci[i + 1]);
+			
+			if (topo1.elevation < 0) continue;
+
+			Vector3 p1 = TopoToXYZ(topo1);
+			Vector3 p2 = TopoToXYZ(topo2);
+
+			DrawLine3D(p1, p2, OrbitColors[orbitIndex % 10]);
+		}
+
+		orbitIndex++;
+
+		libsgp4::CoordTopocentric posNow = m_Config.Tracker.GroundStation.GetLookAngle(sat->GetEci());
+
+		if (posNow.elevation < 0) continue;
+
+		Vector3 rayPos = TopoToXYZ(posNow);
+
+		//DrawModelEx(m_SatelliteModel, TopoToXYZ(posNow), {0, 0, 0}, 0.0f, {0.00005, 0.00005, 0.00005}, WHITE);
+		DrawBillboard(m_SkyCamera, m_SatelliteBilboard, rayPos, 0.15f, {255, 255, 255, 140 });
+	}
+
+	EndMode3D();
+
+	EndTextureMode();
+}
+
+void Application::DrawSkyViewport()
+{
+	ImGui::Begin("3D Sky View", &m_DrawSkyView);
+	{
+		if (m_SkyRenderTarget.texture.width != ImGui::GetContentRegionAvail().x || m_SkyRenderTarget.texture.height != ImGui::GetContentRegionAvail().y)
+		{
+			UnloadRenderTexture(m_SkyRenderTarget);
+			m_SkyRenderTarget = LoadRenderTexture(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
+		}
+
+		m_CanControlSkyCamera = false;
+		if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+			&& ImGui::IsWindowHovered())
+		{
+			m_CanControlSkyCamera = true;
+		}
+
+		rlImGuiImageRenderTexture(&m_SkyRenderTarget);
 	}
 	ImGui::End();
 }
@@ -708,16 +831,17 @@ void Application::DrawPolarView()
 		libsgp4::CoordTopocentric topo = m_Config.Tracker.GroundStation.GetLookAngle(m_SelectedSatellite->GetEci());
 		auto TopoToXY = [&](libsgp4::CoordTopocentric coordTopo) -> ImVec2
 		{
-			float azimuth_rad = coordTopo.azimuth;  // Azimuth in radians
-			float elevation_deg = coordTopo.elevation * RAD2DEG; // Elevation in degrees
+			float azimuthRad = coordTopo.azimuth;  // Azimuth in radians
+			float elevationDeg = coordTopo.elevation * RAD2DEG; // Elevation in degrees
 
-			float norm = 1 - elevation_deg / 90.0f;
+			float norm = 1 - elevationDeg / 90.0f;
 
-			float x = center.x + radius * sinf(azimuth_rad) * norm;
-			float y = center.y - radius * cosf(azimuth_rad) * norm;
+			float x = center.x + radius * sinf(azimuthRad) * norm;
+			float y = center.y - radius * cosf(azimuthRad) * norm;
 
 			return ImVec2(x, y);
 		};
+
 		if (m_PassData.find(m_SelectedSatellite->GetName()) != m_PassData.end())
 		{
 			const auto& passes = m_PassData[m_SelectedSatellite->GetName()];
@@ -747,6 +871,34 @@ void Application::DrawPolarView()
 			// Draw it anyways; maybe it's geostationary
 			draw_list->AddCircleFilled(TopoToXY(topo), 5.0f, IM_COL32(255, 0, 0, 255)); // Red point, size 5
 		}
+
+		// Draw sky camera frustum to let the user know where they 
+		Vector3 dir = m_SkyCamera.target;
+		ImVec2 endpoint = ImVec2(center.x + dir.x * radius, center.y + dir.z * radius); // z = forward in raylib
+
+		draw_list->AddLine(center, endpoint, IM_COL32(90, 120, 255, 220), 1.0f);
+
+		// Draw FOV
+		const int numSegments = 20;
+
+		float angle = atan2f(dir.z, dir.x);  // Z is forward in raylib, X is right
+
+		float halfFovRad = (m_SkyCamera.fovy * 0.5f) * DEG2RAD;
+
+		// Begin wedge drawing
+		draw_list->PathClear();
+		draw_list->PathLineTo(center); // center of the FOV wedge
+
+		for (int i = 0; i <= numSegments; ++i) {
+			float t = (float)i / numSegments;
+			float theta = angle - halfFovRad + t * (2 * halfFovRad);
+			float x = center.x + cosf(theta) * radius;
+			float y = center.y + sinf(theta) * radius;
+			draw_list->PathLineTo(ImVec2(x, y));
+		}
+
+		draw_list->PathFillConvex(IM_COL32(5, 30, 255, 50));  // semi-transparent fill
+		
 	}
 	ImGui::End();
 }
@@ -772,7 +924,7 @@ float DateTimeToSeconds(const libsgp4::DateTime& dt)
 	return static_cast<float>(raw_time);
 }
 
-void Application::DrawSkyGlance()
+void Application::DrawNextPasses()
 {
 	libsgp4::TimeSpan span(24, 0, 0);
 
@@ -780,7 +932,7 @@ void Application::DrawSkyGlance()
 	float rowSpacing = 5.0f;
 	float textOffset = 5.0f;
 
-	ImGui::Begin("Sky at a glance", &m_DrawSkyGlance);
+	ImGui::Begin("Next passes", &m_DrawNextPasses);
 	{
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImVec2 canvasPos = ImGui::GetCursorScreenPos();

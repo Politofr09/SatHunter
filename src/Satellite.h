@@ -12,8 +12,9 @@ namespace SatHunter {
 
 struct OrbitPath
 {
-	std::vector<Vector3> Points3D;
-	std::vector<libsgp4::CoordGeodetic> PointsGeodetic;
+	std::vector<Vector3> Points3D;	// Raylib coordinates, scaled
+	std::vector<libsgp4::Eci> PointsEci; // Real ECI coordinates
+	std::vector<libsgp4::CoordGeodetic> PointsGeodetic; // lat/lon coordinates
 };
 
 class Satellite

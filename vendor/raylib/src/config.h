@@ -95,6 +95,7 @@
     #endif
 #endif
 
+#define SUPPORT_FILEFORMAT_HDR
 
 // rcore: Configuration values
 //------------------------------------------------------------------------------------
