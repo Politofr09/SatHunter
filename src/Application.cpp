@@ -671,7 +671,6 @@ void Application::DrawSkyView()
 
 		Vector3 rayPos = TopoToXYZ(posNow);
 
-		//DrawModelEx(m_SatelliteModel, TopoToXYZ(posNow), {0, 0, 0}, 0.0f, {0.00005, 0.00005, 0.00005}, WHITE);
 		DrawBillboard(m_SkyCamera, m_SatelliteBilboard, rayPos, 0.15f, {255, 255, 255, 140 });
 	}
 
@@ -828,7 +827,6 @@ void Application::DrawPolarView()
 			ImGui::SetTooltip("Azimuth: %.3f, Elevation: %.3f", azimuth_deg, elevation);
 		}
 
-		libsgp4::CoordTopocentric topo = m_Config.Tracker.GroundStation.GetLookAngle(m_SelectedSatellite->GetEci());
 		auto TopoToXY = [&](libsgp4::CoordTopocentric coordTopo) -> ImVec2
 		{
 			float azimuthRad = coordTopo.azimuth;  // Azimuth in radians
@@ -842,22 +840,23 @@ void Application::DrawPolarView()
 			return ImVec2(x, y);
 		};
 
-		if (m_PassData.find(m_SelectedSatellite->GetName()) != m_PassData.end())
+		// Loop through LEO and already predicted passes
+		if (!m_PassData.empty())
 		{
-			const auto& passes = m_PassData[m_SelectedSatellite->GetName()];
-			if (!passes.empty())
+			for (const auto& passes : m_PassData)
 			{
-				const PassDetails& currentPass = passes[0];
-				if (currentPass.AOS.Ticks() >= libsgp4::DateTime::Now().Ticks()
-				&&  currentPass.LOS.Ticks() <= libsgp4::DateTime::Now().Ticks())
+				const PassDetails& pass = passes.second[0];
+
+				if (pass.AOS.Ticks() >= libsgp4::DateTime::Now().Ticks()
+				&&  pass.LOS.Ticks() <= libsgp4::DateTime::Now().Ticks())
 				{
-					if (!currentPass.PointsTopocentric.empty())
+					if (!pass.PointsTopocentric.empty())
 					{
-						for (int i = 0; i < currentPass.PointsTopocentric.size() - 1; i++)
+						for (int i = 0; i < pass.PointsTopocentric.size() - 1; i++)
 						{
 							draw_list->AddLine(
-								TopoToXY(currentPass.PointsTopocentric[i]),
-								TopoToXY(currentPass.PointsTopocentric[i + 1]),
+								TopoToXY(pass.PointsTopocentric[i]),
+								TopoToXY(pass.PointsTopocentric[i + 1]),
 								IM_COL32(255, 255, 255, 255)
 							);
 						}
@@ -866,10 +865,14 @@ void Application::DrawPolarView()
 			}
 		}
 
-		if (topo.elevation > 0)
+		// Loop again to draw as well GEO satellites that don't have passes
+		for (const auto& satellite : m_SatelliteList)
 		{
-			// Draw it anyways; maybe it's geostationary
-			draw_list->AddCircleFilled(TopoToXY(topo), 5.0f, IM_COL32(255, 0, 0, 255)); // Red point, size 5
+			libsgp4::CoordTopocentric topo = m_Config.Tracker.GroundStation.GetLookAngle(satellite->GetEci());
+			if (topo.elevation > 0)
+			{
+				draw_list->AddCircleFilled(TopoToXY(topo), 5.0f, IM_COL32(255, 0, 0, 255));
+			}
 		}
 
 		// Draw sky camera frustum to let the user know where they 
