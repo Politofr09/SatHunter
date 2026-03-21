@@ -4,3 +4,6 @@ build
 .vs
 .vscode/*
 .vscode
+
+weather.txt
+weather.txt.timestamp
