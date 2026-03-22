@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <Observer.h>
 
 #define INI_CONFIG_FILE "config.ini"
@@ -11,7 +12,7 @@ struct Config
 {
 	struct _General
 	{
-		std::string TleUrl = "https://celestrak.org/norad/elements/weather.txt";
+		std::vector<std::string> TleUrls;
 	} General;
 
 	struct _Tracker

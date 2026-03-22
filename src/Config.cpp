@@ -18,13 +18,17 @@ Config LoadConfigFile()
 
 	Config conf{};
 
-	conf.General.TleUrl = configFile["General"]["tle_url"].as<const char*>();
+	std::string TLEList = configFile["General"]["tle_urls"].as<const char*>();
+	std::stringstream ss(TLEList);
+	std::string buffer;
+
+	while (std::getline(ss, buffer, ',')) {
+		conf.General.TleUrls.push_back(Trim(buffer));
+	}
 
 	std::string satList = configFile["Tracker"]["satellites"].as<const char*>();
 
-	std::stringstream ss(satList);
-	std::string buffer;
-
+	ss = std::stringstream(satList);
 	while (std::getline(ss, buffer, ',')) {
 		conf.Tracker.Satellites.push_back(Trim(buffer));
 	}
@@ -54,45 +58,45 @@ Config LoadConfigFile()
 
 void SerializeConfigFile(Config& conf)
 {
-	// Right now I will just update the conf.General.TleUrl field
-	// Reserializing everything with inicpp would mean also deleting the comments
-	const std::string& path = "res/" + std::string(INI_CONFIG_FILE);
-	std::ifstream inFile(path);
-    std::stringstream buffer;
-    std::string line;
+	// // Right now I will just update the conf.General.TleUrl field
+	// // Reserializing everything with inicpp would mean also deleting the comments
+	// const std::string& path = "res/" + std::string(INI_CONFIG_FILE);
+	// std::ifstream inFile(path);
+    // std::stringstream buffer;
+    // std::string line;
 
-    bool inGeneralSection = false;
+    // bool inGeneralSection = false;
 
-    while (std::getline(inFile, line))
-    {
-        std::string trimmed = line;
+    // while (std::getline(inFile, line))
+    // {
+    //     std::string trimmed = line;
 
-		if (trimmed.find(";") != std::string::npos)
-    		continue;
-        // Detect section
-        if (trimmed.find("[General]") != std::string::npos)
-        {
-            inGeneralSection = true;
-        }
-        else if (!trimmed.empty() && trimmed[0] == '[')
-        {
-            inGeneralSection = false;
-        }
+	// 	if (trimmed.find(";") != std::string::npos)
+    // 		continue;
+    //     // Detect section
+    //     if (trimmed.find("[General]") != std::string::npos)
+    //     {
+    //         inGeneralSection = true;
+    //     }
+    //     else if (!trimmed.empty() && trimmed[0] == '[')
+    //     {
+    //         inGeneralSection = false;
+    //     }
 
-        // Replace tle_url inside [General]
-        if (inGeneralSection && trimmed.find("tle_url") != std::string::npos)
-        {
-            line = "tle_url = " + conf.General.TleUrl;
-        }
+    //     // Replace tle_url inside [General]
+    //     if (inGeneralSection && trimmed.find("tle_url") != std::string::npos)
+    //     {
+    //         line = "tle_url = " + conf.General.TleUrl;
+    //     }
 
-        buffer << line << "\n";
-    }
+    //     buffer << line << "\n";
+    // }
 
-    inFile.close();
+    // inFile.close();
 
-    std::ofstream outFile(path);
-    outFile << buffer.str();
-
+    // std::ofstream outFile(path);
+    // outFile << buffer.str();
+	return;
 }
 
 }

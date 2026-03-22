@@ -58,8 +58,8 @@ void Application::Initialize()
 	SetupImGuiStyle();
 
 	// TLE fetching and caching
-	CheckTLEs(m_Config.General.TleUrl);
-	m_TLEs = LoadTLEs();
+	CheckTLEs(m_Config.General.TleUrls);
+	m_TLEs = LoadTLEs(m_Config.General.TleUrls);
 
 	m_StartTime = libsgp4::DateTime::Now();
 
@@ -216,82 +216,22 @@ void Application::Tick()
 		// Popups
 		if (openTLEPopup)
 		{
-			ImGui::OpenPopup("Select a TLE url");
+			ImGui::OpenPopup("Add TLE urls");
 		}
 
         // Always center this window when appearing
         ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
-        if (ImGui::BeginPopupModal("Select a TLE url", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::BeginPopupModal("Add TLE urls", NULL, ImGuiWindowFlags_AlwaysAutoResize))
         {
-		    static char buffer[512];
-
-			// Initialize buffer once when popup opens
-			static bool initialized = false;
-			if (!initialized)
+			for (const auto& url : m_Config.General.TleUrls)
 			{
-				strncpy(buffer, m_Config.General.TleUrl.c_str(), sizeof(buffer));
-				buffer[sizeof(buffer) - 1] = '\0';
-				initialized = true;
+				ImGui::Text(url.c_str());
 			}
-
-			ImGui::Text("Enter new TLE URL:");
-			ImGui::InputTextMultiline("##tle_url", buffer, sizeof(buffer));
-
-			if (ImGui::Button("Update", ImVec2(120, 0)))
-			{
-				m_Config.General.TleUrl = buffer;
-
-				// Update all the TLEs and orbits and references
-				m_SatelliteList.clear();
-				m_TLEs.clear();
-
-				// TODO: Maybe instead of weather.txt use the url or group name as the filename maybe
-				// Manually remove weather.txt and weather.txt.timestamp
-				std::remove("weather.txt");
-				std::remove("weather.txt.timestamp");
-
-				CheckTLEs(m_Config.General.TleUrl);
-				m_TLEs = LoadTLEs();
-
-				for (const std::string& sat : m_Config.Tracker.Satellites)
-				{
-					// Create a satellite for every TLE that has 'sat' name
-					// Check if it exists first!!
-					// Some satellites might stop existing and references can conflict.
-					// And there could be a typo as well. The program will gently throw an error.
-
-					if (m_TLEs.find(sat) == m_TLEs.end()) 
-					{
-						std::cout << "ERROR: Couldn't find [" << sat << "] in the given satellite list. Please check any typos or if the satellite belongs to the list in weather.txt!\n";
-						continue;
-					}
-
-					m_SatelliteList.push_back(new Satellite(m_TLEs[sat]));
-				}
-				
-				// If the list is empty, just add the first satellite in weather.txt
-				if (m_SatelliteList.empty())
-				{
-					auto it = m_TLEs.begin();
-					m_SatelliteList.push_back(new Satellite(it->second));
-				}
-
-				TrySelectSatellite(m_SatelliteList[0]);
-
-				// SerializeConfigFile(m_Config);
-
-				m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
-				initialized = false; // reset for next time
-				ImGui::CloseCurrentPopup();
-			}
-
-			ImGui::SameLine();
 
 			if (ImGui::Button("Cancel", ImVec2(120, 0)))
 			{
-				initialized = false; // reset
 				ImGui::CloseCurrentPopup();
 			}
 
@@ -886,12 +826,36 @@ void Application::DrawSatelliteList()
 {
 	ImGui::Begin("Satellite list", &m_DrawSatelliteList);
 	{
-		ImGui::BeginChild("All satellites", ImVec2(ImGui::GetContentRegionAvail().x/2, ImGui::GetContentRegionAvail().y));
+		ImGui::BeginChild("Satellites", ImVec2(ImGui::GetContentRegionAvail().x/2, ImGui::GetContentRegionAvail().y));
+
+		// Searchbar 
+		static char searchBuffer[256] = "";
+		ImGui::PushID("TLESearchBar");
+
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+		ImGui::TextUnformatted(ICON_FA_MAGNIFYING_GLASS);
+		ImGui::SameLine();
+
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+		ImGui::InputTextWithHint(
+			"##search",                    // hidden label
+			"Search satellites...",        // placeholder
+			searchBuffer,
+			sizeof(searchBuffer)
+		);
+
+		ImGui::PopStyleVar();
+		ImGui::PopID();
+
+		std::string query(searchBuffer);
+		std::transform(query.begin(), query.end(), query.begin(), ::toupper);
 
 		for (const auto& entry : m_TLEs)
 		{
 			const std::string& name = entry.first;
-			const auto& tle = entry.second;
+			if (name.find(query) == std::string::npos) continue;
+
+			// const auto& tle = entry.second;
 
 			if (ImGui::Selectable(name.c_str(), m_SelectedSatellite->GetName() == name))
 			{

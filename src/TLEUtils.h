@@ -6,11 +6,10 @@
 
 namespace SatHunter {
 
-#define TLE_FILE "weather.txt"
+// Download TLE data from a list of urls and stores each url in a hashed filename
+// Then creates a timestamp file to know when was the last time we fetched the TLEs
+bool CheckTLEs(const std::vector<std::string>& urls);
 
-// Download TLE data and store it in weather.txt file exists
-bool CheckTLEs(const std::string url);
-
-std::unordered_map<std::string, libsgp4::Tle> LoadTLEs();
+std::unordered_map<std::string, libsgp4::Tle> LoadTLEs(const std::vector<std::string>& urls);
 
 }

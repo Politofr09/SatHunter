@@ -11,16 +11,29 @@
 #include <string>
 
 namespace SatHunter {
-	
-// Checks if weather.txt exists and weather.txt.timestamp is less than 24h old
-bool CheckTimestampFile()
-{
-    if (!std::filesystem::exists(TLE_FILE))
-    {
-        return false;
-    }
 
-    std::ifstream tsFile(std::string(TLE_FILE) + ".timestamp");
+// We can't just store the url because the file system will complain about the symbols.
+// Assigns a unique hash filename to a given url.
+std::string UrlHashFilename(const std::string& url) 
+{
+    std::hash<std::string> hasher;
+    size_t h = hasher(url);
+    return "TLE_" + std::to_string(h) + ".txt";
+}
+
+// Checks if all urls are stored and checks if the timestamp.ts file has expired
+bool CheckTimestampFile(const std::vector<std::string>& urls)
+{
+	
+	for (const auto& url : urls)
+	{
+		if (!std::filesystem::exists(UrlHashFilename(url)))
+		{
+			return false;
+		}
+	}
+
+    std::ifstream tsFile("timestamp.ts");
     if (!tsFile) return false;
 
     std::string line;
@@ -48,79 +61,85 @@ bool CheckTimestampFile()
     return duration < std::chrono::hours(24); // Check if *less* than 24h
 }
 
-bool CheckTLEs(const std::string url)
+bool CheckTLEs(const std::vector<std::string>& urls)
 {
-	if (CheckTimestampFile())
-	{
-		std::cout << "Using cached TLE data" << std::endl;
-		return false;
-	}
+    if (CheckTimestampFile(urls))
+    {
+        std::cout << "Using cached TLE data" << std::endl;
+        return false;
+    }
 
-	std::cout << "TLE data is outdated. Fetching new TLE data... ";
+    std::cout << "TLE sources are outdated or missing. Fetching new TLE data...\n";
 
-	// We need to update weather.txt and weather.txt.timestamp
-	cpr::Response r = cpr::Get(cpr::Url{ url });
+    for (const auto& url : urls)
+    {
+        std::cout << "Fetching: " << url << std::endl;
 
-	if (r.status_code != 200)
-	{
-		std::cerr << "\nFailed to fetch TLE data: HTTP " << r.status_code << std::endl;
-		return false;
-	}
+        cpr::Response r = cpr::Get(cpr::Url{ url });
 
-	std::cout << "Done." << std::endl;
+        if (r.status_code != 200)
+        {
+            std::cerr << "Failed: HTTP " << r.status_code << std::endl;
+            continue;
+        }
 
-	// Write it to txt file
-	std::ofstream tleFile(TLE_FILE, std::ios::binary);
-	tleFile << r.text;
-	tleFile.close();
+        std::ofstream tleFile(UrlHashFilename(url), std::ios::binary);
+        tleFile << r.text;
+    }
 
-	// Get current time (UTC) and write to .timestamp
-	auto now = std::chrono::system_clock::now();
-	std::ofstream tsFile(std::string(TLE_FILE) + ".timestamp");
-	tsFile << std::format("{:%FT%T%Ez}", now);
-	tsFile.close();
+    // Update global timestamp
+    auto now = std::chrono::system_clock::now();
+    std::ofstream tsFile("timestamp.ts");
+    tsFile << std::format("{:%FT%T%Ez}", now);
 
-	std::cout << "TLE data updated and timestamp saved. TLE local file will expire in 24 hours." << std::endl;
-	return true;
+    std::cout << "TLE sources updated. Cache valid for 24 hours.\n";
+
+    return true;
 }
 
-std::unordered_map<std::string, libsgp4::Tle> LoadTLEs()
+std::unordered_map<std::string, libsgp4::Tle> LoadTLEs(const std::vector<std::string>& urls)
 {
-	std::unordered_map<std::string, libsgp4::Tle> tles;
+    std::unordered_map<std::string, libsgp4::Tle> tles;
 
-	std::ifstream file(TLE_FILE);
-	if (!file.is_open())
-	{
-		std::cerr << "Failed to open TLE file.\n";
-		return {};
-	}
+    for (const auto& url : urls)
+    {
+        std::ifstream file(UrlHashFilename(url));
+        if (!file.is_open())
+        {
+            std::cerr << "Failed to open TLE file for URL: " << url << "\n";
+            continue;
+        }
 
-	std::string satName, line1, line2;
-	while (std::getline(file, satName))
-	{
-		// Remove trailing spaces from satName
-		satName.erase(std::find_if(satName.rbegin(), satName.rend(), [](unsigned char ch) {
-			return !std::isspace(ch);  // Find the first non-space character from the end
-		}).base(), satName.end());
+        std::string satName, line1, line2;
 
-		if (!std::getline(file, line1)) break;
-		if (!std::getline(file, line2)) break;
+        while (std::getline(file, satName))
+        {
+            // Trim spaces
+            satName.erase(std::find_if(satName.rbegin(), satName.rend(),
+                [](unsigned char ch) { return !std::isspace(ch); }).base(),
+                satName.end());
 
-		try {
+            if (!std::getline(file, line1)) break;
+            if (!std::getline(file, line2)) break;
+
+            try {
 			#ifdef __linux__
-			line1.pop_back();
-			line2.pop_back();
+                if (!line1.empty()) line1.pop_back();
+                if (!line2.empty()) line2.pop_back();
 			#endif
 
-			libsgp4::Tle tle(satName, line1, line2);
-			tles.emplace(satName, std::move(tle));
-		}
-		catch (const std::exception& e) {
-			std::cerr << "Failed to parse TLE: " << e.what() << "\n";
-		}
-	}
+                libsgp4::Tle tle(satName, line1, line2);
 
-	return tles;
+                // Deduplication happens here:
+                tles[satName] = std::move(tle);
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Failed to parse TLE: " << e.what() << "\n";
+            }
+        }
+    }
+
+    return tles;
 }
 
 }
