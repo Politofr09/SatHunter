@@ -41,5 +41,9 @@ make
 ```
 
 # Future improvements and features
+- Combine multiple tle sources and be able to add more custom urls (not just one)
+- Show transponder data 
+- rotctl support and interface with a rotator dish
+- Headless version / control rotctl interface over the network
 - Add CMake install target and make it easy to install
-- Add proper logo 
+- Add proper logo (windres on windows / .desktop on linux)
