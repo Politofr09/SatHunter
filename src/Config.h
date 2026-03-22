@@ -24,5 +24,6 @@ struct Config
 };
 
 Config LoadConfigFile();
+void SerializeConfigFile(Config& conf);
 
 }

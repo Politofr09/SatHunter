@@ -84,6 +84,8 @@ private:
 	Texture m_WorldMapTexture;
 	Font m_DroidSansFont;
 	Skybox m_Skybox;
+	Texture m_IconTexture;
+
 
 	std::unordered_map<std::string, libsgp4::Tle> m_TLEs;
 	libsgp4::DateTime m_StartTime;

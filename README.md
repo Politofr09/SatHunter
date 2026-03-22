@@ -39,3 +39,7 @@ cd build
 cmake ..
 make
 ```
+
+# Future improvements and features
+- Add CMake install target and make it easy to install
+- Add proper logo 

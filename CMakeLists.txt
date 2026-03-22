@@ -33,3 +33,4 @@ target_link_libraries(${PROJECT_NAME} cpr)
 target_link_libraries(${PROJECT_NAME} inicpp)
 
 file(COPY "${CMAKE_SOURCE_DIR}/res" DESTINATION "${CMAKE_BINARY_DIR}")
+file(COPY "${CMAKE_SOURCE_DIR}/imgui.ini" DESTINATION "${CMAKE_BINARY_DIR}")

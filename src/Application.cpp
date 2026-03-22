@@ -52,9 +52,9 @@ void Application::Initialize()
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_ViewportsEnable;
 	io.FontDefault = io.Fonts->AddFontFromFileTTF("res/droid-sans/DroidSans.ttf", 16.0f);
-
+	
 	rlImGuiEndInitImGui();
-
+	
 	SetupImGuiStyle();
 
 	// TLE fetching and caching
@@ -64,13 +64,30 @@ void Application::Initialize()
 	m_StartTime = libsgp4::DateTime::Now();
 
 	LoadResources();
-
+	
 	for (const std::string& sat : m_Config.Tracker.Satellites)
 	{
 		// Create a satellite for every TLE that has 'sat' name
+		// Check if it exists first!!
+		// Some satellites might stop existing and references can conflict.
+		// And there could be a typo as well. The program will gently throw an error.
+
+		if (m_TLEs.find(sat) == m_TLEs.end()) 
+		{
+			std::cout << "ERROR: Couldn't find [" << sat << "] in the given satellite list. Please check any typos or if the satellite belongs to the list in weather.txt!\n";
+			continue;
+		}
+
 		m_SatelliteList.push_back(new Satellite(m_TLEs[sat]));
 	}
 	
+	// If the list is empty, just add the first satellite in weather.txt
+	if (m_SatelliteList.empty())
+	{
+		auto it = m_TLEs.begin();
+		m_SatelliteList.push_back(new Satellite(it->second));
+	}
+
 	TrySelectSatellite(m_SatelliteList[0]);
 
 	m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
@@ -128,6 +145,9 @@ void Application::Tick()
 			ImGui::SetNextWindowSize(ViewportDimensions);
 		}
 
+		bool openTLEPopup = false;
+		bool openAboutPopup = false;
+
 		ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoBringToFrontOnFocus |                 // we just want to use this window as a host for the menubar and docking
 			ImGuiWindowFlags_NoNavFocus |                                                      // so turn off everything that would make it act like a window
 			ImGuiWindowFlags_NoDocking |
@@ -152,7 +172,10 @@ void Application::Tick()
 			{
 				if (ImGui::BeginMenu("File"))
 				{
-					if (ImGui::MenuItem("Exit")) {}
+					if (ImGui::MenuItem("Exit")) 
+					{
+						CloseWindow();
+					}
 
 					ImGui::EndMenu();
 				}
@@ -169,10 +192,167 @@ void Application::Tick()
 					ImGui::EndMenu();
 				}
 
+				if (ImGui::BeginMenu("Edit"))
+				{
+					if (ImGui::MenuItem("TLE url")) 
+					{
+						openTLEPopup = true;
+					}
+
+					if (ImGui::MenuItem("About"))
+					{
+						openAboutPopup = true;
+					}
+					
+					ImGui::EndMenu();
+				}
+
+
 				ImGui::EndMenuBar();
 			}
 		}
 		ImGui::End();
+
+		// Popups
+		if (openTLEPopup)
+		{
+			ImGui::OpenPopup("Select a TLE url");
+		}
+
+        // Always center this window when appearing
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+        if (ImGui::BeginPopupModal("Select a TLE url", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+		    static char buffer[512];
+
+			// Initialize buffer once when popup opens
+			static bool initialized = false;
+			if (!initialized)
+			{
+				strncpy(buffer, m_Config.General.TleUrl.c_str(), sizeof(buffer));
+				buffer[sizeof(buffer) - 1] = '\0';
+				initialized = true;
+			}
+
+			ImGui::Text("Enter new TLE URL:");
+			ImGui::InputTextMultiline("##tle_url", buffer, sizeof(buffer));
+
+			if (ImGui::Button("Update", ImVec2(120, 0)))
+			{
+				m_Config.General.TleUrl = buffer;
+
+				// Update all the TLEs and orbits and references
+				m_SatelliteList.clear();
+				m_TLEs.clear();
+
+				// TODO: Maybe instead of weather.txt use the url or group name as the filename maybe
+				// Manually remove weather.txt and weather.txt.timestamp
+				std::remove("weather.txt");
+				std::remove("weather.txt.timestamp");
+
+				CheckTLEs(m_Config.General.TleUrl);
+				m_TLEs = LoadTLEs();
+
+				for (const std::string& sat : m_Config.Tracker.Satellites)
+				{
+					// Create a satellite for every TLE that has 'sat' name
+					// Check if it exists first!!
+					// Some satellites might stop existing and references can conflict.
+					// And there could be a typo as well. The program will gently throw an error.
+
+					if (m_TLEs.find(sat) == m_TLEs.end()) 
+					{
+						std::cout << "ERROR: Couldn't find [" << sat << "] in the given satellite list. Please check any typos or if the satellite belongs to the list in weather.txt!\n";
+						continue;
+					}
+
+					m_SatelliteList.push_back(new Satellite(m_TLEs[sat]));
+				}
+				
+				// If the list is empty, just add the first satellite in weather.txt
+				if (m_SatelliteList.empty())
+				{
+					auto it = m_TLEs.begin();
+					m_SatelliteList.push_back(new Satellite(it->second));
+				}
+
+				TrySelectSatellite(m_SatelliteList[0]);
+
+				// SerializeConfigFile(m_Config);
+
+				m_PassData = PredictAllPasses(m_StartTime, m_StartTime.AddHours(24));
+				initialized = false; // reset for next time
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Cancel", ImVec2(120, 0)))
+			{
+				initialized = false; // reset
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+        }
+
+		if (openAboutPopup)
+		{
+			ImGui::OpenPopup("About SatHunter");
+		}
+
+        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(32, 32));
+
+		if (ImGui::BeginPopupModal("About SatHunter", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			// Icon
+			rlImGuiImageRect(&m_IconTexture, 256, 256, { 0, 0, 512, 512 });
+
+			ImGui::SameLine();
+
+			// Description panel
+			ImGui::BeginChild("description", ImVec2(300, 150), false);
+
+			ImGui::TextWrapped("SatHunter is an advanced satellite tracking program designed "
+							"to provide real-time tracking, prediction, and visualization "
+							"of satellites.");
+
+			ImGui::Spacing();
+
+			ImGui::Text("Read the /res/config.ini file for more info!");
+
+			ImGui::Spacing();
+
+			ImGui::Text("%s Source:", ICON_FA_CODE);
+			if (ImGui::TextLink("https://github.com/Politofr09/SatHunter"))
+			{
+				OpenURL("https://github.com/Politofr09/SatHunter");
+			}
+
+			ImGui::EndChild();
+
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			// Center the button
+			float buttonWidth = 80.0f;
+			float avail = ImGui::GetContentRegionAvail().x;
+			ImGui::SetCursorPosX((avail - buttonWidth) * 0.5f);
+
+			if (ImGui::Button("OK", ImVec2(buttonWidth, 0)))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
+
+		ImGui::PopStyleVar();
+
 
 		if (m_DrawSatelliteList) DrawSatelliteList();
 		if (m_Draw3DGlobe)       DrawGlobeViewport();
@@ -203,6 +383,7 @@ void Application::LoadResources()
 	m_SatelliteBilboard = LoadTexture("res/satellite-icon-bilboard.png");
 
 	m_WorldMapTexture = LoadTexture("res/2k_earth_daymap.jpg");
+	m_IconTexture = LoadTexture("res/SatHunter logo-light.png");
 
 	m_DroidSansFont = LoadFontEx("res/droid-sans/DroidSans-Bold.ttf", 32, NULL, 0);
 }
@@ -996,7 +1177,18 @@ void Application::DrawNextPasses()
 			int minutes = nextPass->AOS.Minute();
 			int seconds = nextPass->AOS.Second();
 
-			ImGui::Text("Next pass: %s at %02d:%02d:%02d", nextPassSatName.c_str(), hours, minutes, seconds);
+			char buffer[512];
+			snprintf(buffer, sizeof(buffer),
+					"Next pass: %s at %02d:%02d:%02d  ",
+					nextPassSatName.c_str(), hours, minutes, seconds);
+
+			float windowWidth = ImGui::GetWindowSize().x;
+			float textWidth = ImGui::CalcTextSize(buffer).x;
+
+			// Align to right (with optional padding)
+			ImGui::SetCursorPosX(windowWidth - textWidth - 10.0f);
+
+			ImGui::Text("%s", buffer);
 		}
 
 		if (ImGui::IsWindowHovered())

@@ -52,4 +52,47 @@ Config LoadConfigFile()
 	return conf;
 }
 
+void SerializeConfigFile(Config& conf)
+{
+	// Right now I will just update the conf.General.TleUrl field
+	// Reserializing everything with inicpp would mean also deleting the comments
+	const std::string& path = "res/" + std::string(INI_CONFIG_FILE);
+	std::ifstream inFile(path);
+    std::stringstream buffer;
+    std::string line;
+
+    bool inGeneralSection = false;
+
+    while (std::getline(inFile, line))
+    {
+        std::string trimmed = line;
+
+		if (trimmed.find(";") != std::string::npos)
+    		continue;
+        // Detect section
+        if (trimmed.find("[General]") != std::string::npos)
+        {
+            inGeneralSection = true;
+        }
+        else if (!trimmed.empty() && trimmed[0] == '[')
+        {
+            inGeneralSection = false;
+        }
+
+        // Replace tle_url inside [General]
+        if (inGeneralSection && trimmed.find("tle_url") != std::string::npos)
+        {
+            line = "tle_url = " + conf.General.TleUrl;
+        }
+
+        buffer << line << "\n";
+    }
+
+    inFile.close();
+
+    std::ofstream outFile(path);
+    outFile << buffer.str();
+
+}
+
 }
